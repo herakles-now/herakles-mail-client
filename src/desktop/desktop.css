@@ -7,12 +7,19 @@
 .desktop-network-indicator { width: 8px; height: 8px; border-radius: 50%; background: #e09a24; }
 .desktop-network-toggle.is-online .desktop-network-indicator { background: #2f9e63; }
 .desktop-network-toggle.is-offline .desktop-network-indicator { background: #d34c4c; }
-.desktop-profile-controls { position: fixed; top: 8px; right: 12px; z-index: 102; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--background); color: var(--foreground); font: 12px system-ui, sans-serif; }
-.desktop-profile-controls label { display: flex; align-items: center; gap: 5px; }
-.desktop-profile-controls select, .desktop-profile-controls input { max-width: 150px; min-height: 28px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; background: var(--background); color: var(--foreground); font: inherit; }
-.desktop-profile-controls button { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; background: var(--background); color: inherit; font: inherit; cursor: pointer; }
-.desktop-profile-controls form { display: flex; gap: 4px; }
-.desktop-inline-error { position: fixed; top: 48px; right: 12px; z-index: 103; padding: 6px 10px; border-radius: 6px; background: #c23737; color: white; font: 12px system-ui, sans-serif; }
+.desktop-profile-menu { position: fixed; right: 12px; bottom: 48px; z-index: 102; color: var(--foreground); font: 12px system-ui, sans-serif; }
+.desktop-profile-menu > summary { min-height: 34px; display: flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; background: var(--background); box-shadow: 0 2px 10px #0002; cursor: pointer; list-style: none; }
+.desktop-profile-menu > summary::-webkit-details-marker { display: none; }
+.desktop-profile-menu > summary::before { content: "◉"; margin-right: 7px; color: var(--muted-foreground); }
+.desktop-profile-menu[open] > summary { border-color: var(--ring); }
+.desktop-profile-panel { position: absolute; right: 0; bottom: calc(100% + 8px); display: grid; gap: 12px; width: min(320px, calc(100vw - 24px)); padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); box-shadow: 0 12px 36px #0003; }
+.desktop-profile-panel label { display: grid; gap: 5px; font-weight: 550; }
+.desktop-profile-panel select, .desktop-profile-panel input { width: 100%; min-width: 0; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; background: var(--background); color: var(--foreground); font: inherit; }
+.desktop-profile-panel button { min-height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: var(--background); color: inherit; font: inherit; cursor: pointer; }
+.desktop-profile-panel button:hover { background: var(--muted); }
+.desktop-profile-panel form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.desktop-profile-panel button:disabled { opacity: .5; cursor: not-allowed; }
+.desktop-profile-error { margin: 0; color: #c23737; line-height: 1.4; }
 .desktop-setup-overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: #0008; }
 .desktop-setup-overlay .desktop-account-setup { min-height: auto; width: min(100%, 520px); border-radius: 16px; }
 .desktop-setup-cancel { position: fixed; top: 16px; right: 16px; z-index: 201; border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; }

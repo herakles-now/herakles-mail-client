@@ -46,12 +46,31 @@ export default function BulwarkApp() {
   const [setupProfileId, setSetupProfileId] = useState<string | undefined>();
   const [showAccountSetup, setShowAccountSetup] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
+  const profileMenuRef = useRef<HTMLDetailsElement>(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Lokale Sitzung laden …');
   const [writes, setWrites] = useState({ pending: 0, blocked: 0, pendingDeletes: 0, blockedDeletes: 0 });
   const [offlineMode, setOfflineMode] = useState(false);
   const [connectivity, setConnectivity] = useState<'checking' | 'online' | 'offline'>('checking');
   const offlineModeRef = useRef(false);
+  useEffect(() => {
+    const closeProfileMenu = (event: PointerEvent) => {
+      if (event.target instanceof Node && !profileMenuRef.current?.contains(event.target)) {
+        profileMenuRef.current?.removeAttribute('open');
+      }
+    };
+    const closeProfileMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && profileMenuRef.current?.open) {
+        profileMenuRef.current.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', closeProfileMenu);
+    document.addEventListener('keydown', closeProfileMenuOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeProfileMenu);
+      document.removeEventListener('keydown', closeProfileMenuOnEscape);
+    };
+  }, []);
   useEffect(() => {
     let active = true;
     let timer: number | undefined;
@@ -161,20 +180,23 @@ export default function BulwarkApp() {
   return <NextIntlClientProvider locale="de" messages={messages} timeZone="Europe/Belgrade">
     <ThemeProvider><RateLimitToastProvider><TourProvider>
       <div className="desktop-status" role="status" title="Im Test-Schreibmodus sind Gelesen/Ungelesen, Markierungen und Entwurfsaktionen angebunden.">{info.readOnly ? 'Nur Lesen' : 'Test-Schreibmodus'} · {status}{writes.pending > 0 && ` · ${writes.pending} ausstehend`}{writes.blocked > 0 && ` · ${writes.blocked} abgelehnt`}{writes.pendingDeletes > 0 && ` · ${writes.pendingDeletes} Entwurfslöschung(en) ausstehend`}{writes.blockedDeletes > 0 && ` · ${writes.blockedDeletes} Entwurfslöschung(en) blockiert`}</div>
-      <div className="desktop-profile-controls">
+      <details className="desktop-profile-menu" ref={profileMenuRef}>
+        <summary>Profile &amp; Konten</summary>
+        <div className="desktop-profile-panel">
         <label>Profil <select value={activeProfileId ?? ''} onChange={(event) => { void invoke('switch_profile', { profileId: event.target.value }).then(() => window.location.reload()).catch((reason) => setError(String(reason))); }}>
           {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
         </select></label>
         <label>Konto <select value={profiles.find((profile) => profile.id === activeProfileId)?.activeAccountId ?? ''} onChange={(event) => { if (activeProfileId) void invoke('switch_profile_account', { profileId: activeProfileId, accountId: event.target.value }).then(() => window.location.reload()).catch((reason) => setError(String(reason))); }}>
           {(profiles.find((profile) => profile.id === activeProfileId)?.accounts ?? []).map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
         </select></label>
-        <button type="button" onClick={() => { setSetupProfileId(activeProfileId ?? undefined); setShowAccountSetup(true); }}>Konto hinzufügen</button>
-        <form onSubmit={(event) => { event.preventDefault(); void invoke<{ profiles: Profile[]; activeProfileId: string }>('create_profile', { name: newProfileName }).then((registry) => { setProfiles(registry.profiles); setActiveProfileId(registry.activeProfileId); setSetupProfileId(registry.activeProfileId); setShowAccountSetup(true); setNewProfileName(''); }).catch((reason) => setError(String(reason))); }}>
+        <button type="button" onClick={() => { setSetupProfileId(activeProfileId ?? undefined); setShowAccountSetup(true); profileMenuRef.current?.removeAttribute('open'); }}>Konto hinzufügen</button>
+        <form onSubmit={(event) => { event.preventDefault(); void invoke<{ profiles: Profile[]; activeProfileId: string }>('create_profile', { name: newProfileName }).then((registry) => { setProfiles(registry.profiles); setActiveProfileId(registry.activeProfileId); setSetupProfileId(registry.activeProfileId); setShowAccountSetup(true); setNewProfileName(''); profileMenuRef.current?.removeAttribute('open'); }).catch((reason) => setError(String(reason))); }}>
           <input aria-label="Neues Profil" placeholder="Neues Profil" maxLength={64} value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} />
-          <button type="submit" disabled={!newProfileName.trim()}>Profil anlegen</button>
+          <button type="submit" disabled={!newProfileName.trim()}>Neues Profil anlegen</button>
         </form>
-      </div>
-      {error && <div className="desktop-inline-error" role="alert">{error}</div>}
+        {error && <p className="desktop-profile-error" role="alert">{error}</p>}
+        </div>
+      </details>
       {showAccountSetup && <div className="desktop-setup-overlay"><AccountSetup profileId={setupProfileId} onComplete={() => window.location.reload()} /><button type="button" className="desktop-setup-cancel" onClick={() => setShowAccountSetup(false)}>Abbrechen</button></div>}
       <button className={`desktop-network-toggle is-${connectivity}`} type="button" aria-pressed={offlineMode} onClick={() => { void toggleOfflineMode().catch(() => setConnectivity('offline')); }} title={offlineMode ? 'Offline-Modus beenden und sofort verbinden' : connectivity === 'offline' ? 'Verbindung erneut versuchen' : 'Offline-Modus einschalten'}>
         <span className="desktop-network-indicator" aria-hidden="true" />
