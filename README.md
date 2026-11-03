@@ -16,8 +16,17 @@ The local redb database is currently unencrypted. Do not treat this development 
 
 - Node.js 22 or later
 - TypeScript 7 (the project intentionally requires TypeScript 7)
-- Rust and Cargo
+- Rust stable and Cargo, installed with [rustup](https://rustup.rs/)
 - Platform prerequisites for [Tauri 2](https://v2.tauri.app/start/prerequisites/)
+
+Install the Tauri system dependencies for your operating system before building. For Debian or Ubuntu Linux:
+
+```sh
+sudo apt update
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+On macOS, install Xcode Command Line Tools with `xcode-select --install`. On Windows, install Microsoft C++ Build Tools with **Desktop development with C++**; WebView2 is included with most current Windows installations. See Tauri's prerequisites page for distro-specific Linux packages and current platform details.
 
 ## Build and run
 
@@ -38,6 +47,8 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 ```
 
 `npm run dev` starts the browser interface; native JMAP, keyring, and redb operations require the Tauri app. `.env.example` documents debug-only test settings. Never commit `.env.local` or real credentials.
+
+`npm ci` installs JavaScript dependencies only. When `npm run tauri dev` starts, the Tauri CLI invokes Cargo to compile the Rust desktop backend and then launches the app. No separate Rust build command is needed for development. Confirm the toolchain with `rustc --version` and `cargo --version`.
 
 ## Acknowledgements
 
