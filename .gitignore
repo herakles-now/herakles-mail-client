@@ -1,0 +1,23 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies, build outputs and local tooling
+node_modules/
+dist/
+src-tauri/target/
+.cache/
+*.log
+
+src-tauri/gen/schemas/
+
+# Generated from the pinned Bulwark source
+public/plugin-sandbox/
+public/plugin-sandbox-assets/
+public/branding/
+public/notification/
+public/apple-touch-icon.png
+public/icon-192x192.png
+public/icon-512x512.png
+

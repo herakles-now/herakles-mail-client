@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Local application window only; no remote content or filesystem access from JavaScript.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-close", "core:window:allow-destroy"]
+}

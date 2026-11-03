@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/bulwarkmail/webmail.git",
+  "commit": "03e7cd86f102bc66a589b7b02d49523b00ae633a",
+  "version": "1.20.0",
+  "path": "upstream/bulwark",
+  "license": "AGPL-3.0-only"
+}

@@ -1,0 +1,7 @@
+# Herakles Mail notices
+
+Herakles-specific source code is licensed under the GNU Affero General Public License, version 3 only. See `LICENSE` for the complete license text.
+
+This project includes [Bulwark Webmail](https://github.com/bulwarkmail/webmail) as the Git submodule `upstream/bulwark`, pinned to commit `03e7cd86f102bc66a589b7b02d49523b00ae633a`. Bulwark's license, its provisional additional permission for app-store distribution, and its attribution and third-party notices are preserved in `upstream/bulwark/LICENSE` and `upstream/bulwark/NOTICE`. Those upstream terms apply as stated there; this notice does not extend them to separately licensed components.
+
+Other dependencies and assets retain their respective licenses and notices in their source packages.
