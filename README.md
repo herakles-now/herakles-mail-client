@@ -39,6 +39,12 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
 `npm run dev` starts the browser interface; native JMAP, keyring, and redb operations require the Tauri app. `.env.example` documents debug-only test settings. Never commit `.env.local` or real credentials.
 
+## Acknowledgements
+
+Herakles Mail owes a special thank-you to the [Bulwark Webmail](https://github.com/bulwarkmail/webmail) contributors. Bulwark's feature-rich React interface, mail and collaboration views, settings, and plug-in ecosystem are the foundation we are adapting for an offline-first desktop client. We preserve its upstream source, license, and attribution, and aim to share improvements that are useful upstream.
+
+We are grateful to [Stalwart Labs](https://www.stalwart.email/) for building the open-source mail and collaboration server that is our primary JMAP interoperability target. Herakles connects to Stalwart through JMAP; Stalwart is a separate project, and this client does not bundle its server code or imply endorsement.
+
 ## Upstream and licensing
 
 The Bulwark source is pinned in `upstream/bulwark.lock.json`; its own `LICENSE` and `NOTICE` remain in the submodule. Herakles Mail is licensed under **GNU AGPL version 3 only (AGPL-3.0-only)**; see [LICENSE](LICENSE) and [NOTICE](NOTICE) for project and upstream attribution. Third-party components retain their respective licenses.

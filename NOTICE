@@ -4,4 +4,6 @@ Herakles-specific source code is licensed under the GNU Affero General Public Li
 
 This project includes [Bulwark Webmail](https://github.com/bulwarkmail/webmail) as the Git submodule `upstream/bulwark`, pinned to commit `03e7cd86f102bc66a589b7b02d49523b00ae633a`. Bulwark's license, its provisional additional permission for app-store distribution, and its attribution and third-party notices are preserved in `upstream/bulwark/LICENSE` and `upstream/bulwark/NOTICE`. Those upstream terms apply as stated there; this notice does not extend them to separately licensed components.
 
+We gratefully acknowledge [Stalwart Labs](https://www.stalwart.email/) and its [open-source mail server](https://github.com/stalwartlabs/mail-server), which is Herakles Mail's primary JMAP interoperability target. Stalwart server code is not included in this repository; the client connects to independently operated servers using JMAP.
+
 Other dependencies and assets retain their respective licenses and notices in their source packages.

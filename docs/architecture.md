@@ -1,5 +1,7 @@
 # Architektur: lokale Replik als Arbeitsgrundlage
 
+Herakles Mail passt die Oberfläche und das Add-on-Modell von [Bulwark Webmail](https://github.com/bulwarkmail/webmail) für einen Offline-Desktopclient an. [Stalwart](https://www.stalwart.email/) ist das primäre JMAP-Serverziel und läuft unabhängig vom Client. Projektdanksagungen und Lizenzhinweise stehen im [README](../README.md#acknowledgements) und in der [NOTICE](../NOTICE).
+
 ## Verbindlicher Datenfluss
 
 ```mermaid
