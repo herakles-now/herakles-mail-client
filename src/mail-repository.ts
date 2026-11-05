@@ -15,7 +15,7 @@ export interface LocalMail {
   initialized: boolean;
   emails: Email[];
   mailboxes: { id: string; name: string }[];
-  pending: { sequence: number; emailId: string; keyword: string; enabled: boolean; blocked: string | null }[];
+  pending: { sequence: number; emailId: string; keyword: string; mailboxIds?: Record<string, boolean>; enabled: boolean; blocked: string | null }[];
 }
 
 // Every read and mutation goes to redb. Only synchronize may contact Stalwart.

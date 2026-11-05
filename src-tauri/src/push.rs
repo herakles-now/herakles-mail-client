@@ -4,7 +4,20 @@
 use crate::{config::TestConfig, logging, session};
 use futures_util::StreamExt;
 use serde_json::Value;
-use std::time::Duration;
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
+
+static CONNECTED: AtomicBool = AtomicBool::new(false);
+pub fn connected() -> bool {
+    CONNECTED.load(Ordering::SeqCst)
+}
+fn publish_status(app: &AppHandle, connected: bool) {
+    if CONNECTED.swap(connected, Ordering::SeqCst) != connected {
+        let _ = app.emit("jmap-push-status", connected);
+    }
+}
 use tauri::{AppHandle, Emitter};
 
 pub fn start(app: AppHandle, mut network: tokio::sync::watch::Receiver<crate::NetworkState>) {
@@ -15,6 +28,7 @@ pub fn start(app: AppHandle, mut network: tokio::sync::watch::Receiver<crate::Ne
             }
             tokio::select! {
                 result = listen_once(&app) => {
+                    publish_status(&app, false);
                     if let Err(reason) = result {
                         logging::event(
                             "warn",
@@ -31,6 +45,7 @@ pub fn start(app: AppHandle, mut network: tokio::sync::watch::Receiver<crate::Ne
                     }
                 }
                 changed = network.changed() => {
+                    publish_status(&app, false);
                     if changed.is_err() { return; }
                 }
             }
@@ -71,10 +86,17 @@ async fn listen_once(app: &AppHandle) -> Result<(), String> {
     }
     logging::event("info", "sync", "push_connected", serde_json::json!({}));
 
+    publish_status(app, true);
     let mut stream = response.bytes_stream();
     let mut pending = Vec::new();
     let mut event_name = String::new();
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::time::timeout(Duration::from_secs(90), stream.next())
+            .await
+            .map_err(|_| "JMAP-Push-Verbindung antwortet nicht mehr.".to_string())?;
+        let Some(chunk) = chunk else {
+            break;
+        };
         let chunk = chunk.map_err(|_| "JMAP-Push-Verbindung wurde unterbrochen.")?;
         pending.extend_from_slice(&chunk);
         while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {

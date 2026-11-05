@@ -50,6 +50,14 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
 `npm ci` installs JavaScript dependencies only. When `npm run tauri dev` starts, the Tauri CLI invokes Cargo to compile the Rust desktop backend and then launches the app. No separate Rust build command is needed for development. Confirm the toolchain with `rustc --version` and `cargo --version`.
 
+## Desktop testing without automatic reloads
+
+Build with `npm run tauri build -- --debug --no-bundle`, then launch
+`src-tauri/target/debug/herakles-mail.exe` on Windows. This embeds the frontend
+and does not use Vite or its automatic reloads. Use this build for interactive
+mail tests while source files are being edited. `npm run tauri dev` deliberately
+reloads or restarts after source/build-asset changes, triggering a startup sync.
+
 ## Acknowledgements
 
 Herakles Mail owes a special thank-you to the [Bulwark Webmail](https://github.com/bulwarkmail/webmail) contributors. Bulwark's feature-rich React interface, mail and collaboration views, settings, and plug-in ecosystem are the foundation we are adapting for an offline-first desktop client. We preserve its upstream source, license, and attribution, and aim to share improvements that are useful upstream.

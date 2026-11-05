@@ -20,6 +20,7 @@ impl Store {
             .map_err(|_| "Datenbankinitialisierung konnte nicht gespeichert werden.")?;
         let store = Self(database);
         store.initialize_replica()?;
+        store.initialize_blobs()?;
         Ok(store)
     }
 

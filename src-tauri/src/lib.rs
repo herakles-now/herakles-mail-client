@@ -1,4 +1,5 @@
 mod accounts;
+mod blobs;
 mod calendar;
 mod config;
 mod desktop;
@@ -54,6 +55,11 @@ fn require_network(mode: &NetworkMode) -> Result<(), String> {
     } else {
         Err("Offline-Modus aktiv: Änderungen bleiben lokal vorgemerkt.".into())
     }
+}
+
+#[tauri::command]
+fn push_status() -> bool {
+    push::connected()
 }
 
 #[tauri::command]
@@ -319,6 +325,49 @@ fn queue_keyword(
 }
 
 #[tauri::command]
+fn local_blob(
+    store: State<'_, storage::Store>,
+    account_id: String,
+    blob_id: String,
+) -> Result<Option<blobs::CachedBlob>, String> {
+    let config = config::TestConfig::load()?;
+    desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")?;
+    store.cached_blob(&sync::scope(&config, &account_id), &blob_id)
+}
+
+#[tauri::command]
+async fn sync_blob(
+    store: State<'_, storage::Store>,
+    gate: State<'_, SyncGate>,
+    network: State<'_, NetworkMode>,
+    account_id: String,
+    blob_id: String,
+) -> Result<(), String> {
+    require_network(&network)?;
+    let _guard = gate.0.lock().await;
+    require_network(&network)?;
+    let config = config::TestConfig::load()?;
+    desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")?;
+    let scope = sync::scope(&config, &account_id);
+    let reference = blobs::references(&store.local_mail(&scope)?)
+        .into_iter()
+        .find(|item| item.id == blob_id)
+        .ok_or("Anhang gehoert zu keiner lokal verfuegbaren Nachricht.")?;
+    if store.blob_bytes(&scope, &blob_id)?.is_some() {
+        return Ok(());
+    }
+    let connection = sync::Connection::discover(&config, &account_id)
+        .await
+        .map_err(|error| error.message())?;
+    let bytes = connection
+        .download_blob(&account_id, &reference)
+        .await
+        .map_err(|error| error.message())?;
+    require_network(&network)?;
+    store.cache_blob(&scope, &blob_id, &bytes)
+}
+
+#[tauri::command]
 async fn sync_mail(
     store: State<'_, storage::Store>,
     gate: State<'_, SyncGate>,
@@ -342,7 +391,42 @@ async fn sync_mail(
         config.read_only,
     )
     .await
-    .map_err(|error| report_sync_error("sync", "mail", error))
+    .map_err(|error| report_sync_error("sync", "mail", error))?;
+    // A bounded, best-effort pass must not turn an attachment failure into a mail-sync failure.
+    let scope = sync::scope(&config, &account_id);
+    let prefetch = async {
+        let mut remaining = 4 * 1024 * 1024;
+        let mut attempted = 0;
+        for reference in blobs::references(&store.local_mail(&scope)?) {
+            if !network.enabled() {
+                break;
+            }
+            if !reference.attachment
+                || !reference
+                    .size
+                    .is_some_and(|size| size <= 1024 * 1024 && size <= remaining as u64)
+                || store.blob_bytes(&scope, &reference.id)?.is_some()
+            {
+                continue;
+            }
+            attempted += 1;
+            if let Ok(bytes) = connection.download_blob(&account_id, &reference).await {
+                if !network.enabled() {
+                    break;
+                }
+                remaining -= bytes.len();
+                if store.cache_blob(&scope, &reference.id, &bytes).is_err() {
+                    break;
+                }
+            }
+            if attempted >= 4 {
+                break;
+            }
+        }
+        Ok::<(), String>(())
+    };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), prefetch).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -373,12 +457,13 @@ async fn sync_mailboxes(
 
 #[tauri::command]
 async fn composer_request(
+    store: State<'_, storage::Store>,
     network: State<'_, NetworkMode>,
     method_calls: Vec<(String, serde_json::Value, String)>,
 ) -> Result<serde_json::Value, String> {
     require_network(&network)?;
     let config = config::TestConfig::load()?;
-    let response = match sync::composer_request(&config, &method_calls).await {
+    let response = match sync::composer_request(&store, &config, &method_calls).await {
         Ok(response) => response,
         Err(error) => {
             logging::event(
@@ -504,9 +589,12 @@ pub fn run() {
             switch_profile,
             switch_profile_account,
             set_network_enabled,
+            push_status,
             local_mail,
             queue_keyword,
             sync_mail,
+            local_blob,
+            sync_blob,
             sync_mailboxes,
             composer_request,
             read_only_mode,

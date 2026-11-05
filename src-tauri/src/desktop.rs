@@ -291,15 +291,17 @@ fn answer_email_set(
                 not_updated.insert(id.clone(), json!({"type":"notFound"}));
                 continue;
             };
-            match keyword_patch(email, patch) {
-                Ok(changes) => match store.queue_keywords(&scope, id, &changes) {
-                    Ok(()) => {
-                        updated.insert(id.clone(), Value::Null);
+            match email_update(mail, email, patch) {
+                Ok((changes, mailbox_ids)) => {
+                    match store.queue_email_update(&scope, id, &changes, mailbox_ids) {
+                        Ok(()) => {
+                            updated.insert(id.clone(), Value::Null);
+                        }
+                        Err(_) => {
+                            not_updated.insert(id.clone(), json!({"type":"serverFail"}));
+                        }
                     }
-                    Err(_) => {
-                        not_updated.insert(id.clone(), json!({"type":"serverFail"}));
-                    }
-                },
+                }
                 Err(kind) => {
                     not_updated.insert(id.clone(), json!({"type":kind}));
                 }
@@ -401,6 +403,116 @@ fn answer_email_set(
     Ok(
         json!({"accountId":account,"oldState":old_state,"newState":new_state,"created":created,"notCreated":not_created,"destroyed":destroyed,"notDestroyed":not_destroyed}),
     )
+}
+
+type EmailUpdate = (Vec<(String, bool)>, Option<Value>);
+
+fn email_update(
+    mail: &LocalMail,
+    email: &Value,
+    patch: &Value,
+) -> Result<EmailUpdate, &'static str> {
+    let patch = patch.as_object().ok_or("invalidProperties")?;
+    let mut flags = serde_json::Map::new();
+    let mut desired = email["mailboxIds"].as_object().cloned().unwrap_or_default();
+    let before = desired.clone();
+    let mut moving = false;
+    for (property, value) in patch {
+        if property == "mailboxIds" {
+            if patch.keys().any(|key| key.starts_with("mailboxIds/")) {
+                return Err("invalidProperties");
+            }
+            desired = value.as_object().cloned().ok_or("invalidProperties")?;
+            moving = true;
+        } else if let Some(token) = property.strip_prefix("mailboxIds/") {
+            // Decode one JSON Pointer token, rejecting malformed escapes.
+            let mut id = String::new();
+            let mut chars = token.chars();
+            while let Some(ch) = chars.next() {
+                if ch == '~' {
+                    id.push(match chars.next() {
+                        Some('0') => '~',
+                        Some('1') => '/',
+                        _ => return Err("invalidProperties"),
+                    });
+                } else if ch == '/' {
+                    return Err("invalidProperties");
+                } else {
+                    id.push(ch);
+                }
+            }
+            if value.is_null() {
+                desired.remove(&id);
+            } else if value == &Value::Bool(true) {
+                desired.insert(id, value.clone());
+            } else {
+                return Err("invalidProperties");
+            }
+            moving = true;
+        } else {
+            flags.insert(property.clone(), value.clone());
+        }
+    }
+    let changes = keyword_patch(email, &Value::Object(flags))?;
+    if moving {
+        if desired.is_empty() || desired.values().any(|v| v != &Value::Bool(true)) {
+            return Err("invalidProperties");
+        }
+        for id in before.keys().chain(desired.keys()) {
+            if before.contains_key(id) == desired.contains_key(id) {
+                continue;
+            }
+            let mailbox = mail
+                .mailboxes
+                .iter()
+                .find(|m| m["id"] == *id)
+                .ok_or("invalidProperties")?;
+            let right = if desired.contains_key(id) {
+                "mayAddItems"
+            } else {
+                "mayRemoveItems"
+            };
+            if mailbox["myRights"][right] != true {
+                return Err("forbidden");
+            }
+        }
+    }
+    Ok((changes, moving.then_some(Value::Object(desired))))
+}
+
+#[test]
+fn mailbox_patches_validate_rights_tokens_and_mixed_updates() {
+    let mut mail = LocalMail {
+        initialized: true,
+        pending: vec![],
+        pending_deletes: vec![],
+        emails: vec![],
+        mailboxes: vec![
+            json!({"id":"inbox","myRights":{"mayRemoveItems":true,"mayAddItems":true}}),
+            json!({"id":"trash/~","myRights":{"mayAddItems":true}}),
+            json!({"id":"locked","myRights":{"mayAddItems":false}}),
+        ],
+    };
+    let email = json!({"keywords":{},"mailboxIds":{"inbox":true}});
+    let (flags, ids) = email_update(
+        &mail,
+        &email,
+        &json!({"mailboxIds/inbox":null,"mailboxIds/trash~1~0":true,"keywords/$seen":true}),
+    )
+    .unwrap();
+    assert_eq!(ids.unwrap(), json!({"trash/~":true}));
+    assert_eq!(flags, vec![("$seen".into(), true)]);
+    for patch in [
+        json!({"mailboxIds":{}}),
+        json!({"mailboxIds":{"unknown":true}}),
+        json!({"mailboxIds":{"locked":true}}),
+        json!({"mailboxIds":{"inbox":true},"subject":"bad"}),
+        json!({"mailboxIds/bad~2":true}),
+    ] {
+        assert!(email_update(&mail, &email, &patch).is_err());
+    }
+    mail.mailboxes[0]["myRights"]["mayRemoveItems"] = json!(false);
+    assert!(email_update(&mail, &email, &json!({"mailboxIds":{"trash/~":true}})).is_err());
 }
 
 fn keyword_patch(email: &Value, patch: &Value) -> Result<Vec<(String, bool)>, &'static str> {
@@ -640,16 +752,42 @@ fn answer_read(
             let sorts = args["sort"].as_array();
             if let Some(sorts) = sorts {
                 for sort in sorts {
-                    if !["receivedAt", "sentAt", "size", "subject", "id"]
-                        .contains(&sort["property"].as_str().unwrap_or(""))
+                    if ![
+                        "receivedAt",
+                        "sentAt",
+                        "size",
+                        "subject",
+                        "id",
+                        "from",
+                        "to",
+                        "hasKeyword",
+                    ]
+                    .contains(&sort["property"].as_str().unwrap_or(""))
                     {
+                        return Err("unsupportedSort");
+                    }
+                    if sort["property"] == "hasKeyword" && sort["keyword"].as_str().is_none() {
                         return Err("unsupportedSort");
                     }
                 }
                 emails.sort_by(|a, b| {
                     for sort in sorts {
                         let property = sort["property"].as_str().unwrap_or("receivedAt");
-                        let order = if property == "size" {
+                        let order = if property == "hasKeyword" {
+                            let keyword = sort["keyword"].as_str().unwrap_or("");
+                            (a["keywords"][keyword] == true).cmp(&(b["keywords"][keyword] == true))
+                        } else if property == "from" || property == "to" {
+                            let address = |email: &Value| {
+                                let first = &email[property][0];
+                                first["name"]
+                                    .as_str()
+                                    .filter(|name| !name.is_empty())
+                                    .or_else(|| first["email"].as_str())
+                                    .unwrap_or("")
+                                    .to_lowercase()
+                            };
+                            address(a).cmp(&address(b))
+                        } else if property == "size" {
                             a[property].as_u64().cmp(&b[property].as_u64())
                         } else {
                             a[property].as_str().cmp(&b[property].as_str())
@@ -704,6 +842,46 @@ fn answer_read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_sort_supports_sender_and_keyword_order() {
+        let mail = LocalMail {
+            initialized: true,
+            pending: vec![],
+            pending_deletes: vec![],
+            mailboxes: vec![],
+            emails: vec![
+                json!({"id":"a","from":[{"name":"Zoe"}],"keywords":{}}),
+                json!({"id":"b","from":[{"email":"alice@example.test"}],"keywords":{"$flagged":true}}),
+            ],
+        };
+        let sorted = answer_read(
+            &mail,
+            "account",
+            "s",
+            "Email/query",
+            &json!({"sort":[{"property":"from","isAscending":true}]}),
+        )
+        .unwrap();
+        assert_eq!(sorted["ids"], json!(["b", "a"]));
+        let sorted = answer_read(
+            &mail,
+            "account",
+            "s",
+            "Email/query",
+            &json!({"sort":[{"property":"hasKeyword","keyword":"$flagged","isAscending":false}]}),
+        )
+        .unwrap();
+        assert_eq!(sorted["ids"], json!(["b", "a"]));
+        assert!(answer_read(
+            &mail,
+            "account",
+            "s",
+            "Email/query",
+            &json!({"sort":[{"property":"hasKeyword"}]})
+        )
+        .is_err());
+    }
+
     #[test]
     fn writable_jmap_queues_flags_atomically_and_read_only_remains_enforced() {
         use crate::replica::Collection;

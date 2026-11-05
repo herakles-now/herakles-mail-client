@@ -1,9 +1,10 @@
+import { readDesktopBlob } from './blobs';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { flushDesktopStorage } from './storage';
 import { flushBeforeClose } from './close';
 import { JMAPClient } from '@/lib/jmap/client';
-import { setOfflineHooks } from '@/lib/jmap/offline-hooks';
+import { OfflineUnavailableError, setOfflineHooks } from '@/lib/jmap/offline-hooks';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAccountStore } from '@/stores/account-store';
 import { setClientLookup } from '@/stores/client-registry';
@@ -18,6 +19,16 @@ import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY }
 import type { DesktopSession } from './accounts';
 export interface Bootstrap { session: DesktopSession; serverUrl: string; username: string; readOnly: boolean; }
 let currentLogin: { info: Bootstrap; client: JMAPClient; localId: string } | null = null;
+
+async function invokeComposer(methodCalls: import('@/lib/jmap/offline-hooks').OfflineMethodCall[]) {
+  try { return await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('composer_request', { methodCalls }); }
+  catch (reason) {
+    if (typeof reason === 'string' && reason.startsWith('Offline-Modus aktiv:')) {
+      throw new OfflineUnavailableError('Offline: Die Nachricht wurde nicht versendet. Der Entwurf bleibt erhalten.');
+    }
+    throw reason;
+  }
+}
 
 export async function bootstrapBulwark(): Promise<Bootstrap> {
   (globalThis as unknown as { __DESKTOP_PLUGIN_URL__: string }).__DESKTOP_PLUGIN_URL__ = convertFileSrc('index.html', 'bulwark-plugin');
@@ -43,16 +54,27 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
       // its explicit JMAP submission batch cross the native authenticated
       // transport; the renderer never receives credentials or a server URL
       // with authorization attached.
+      const submissionCleanup = methodCalls.some(([method, args]) => method === 'EmailSubmission/set' && args.destroy && !args.create);
+      if (submissionCleanup) {
+        const responses: import('@/lib/jmap/offline-hooks').OfflineResponse['methodResponses'] = [];
+        for (const call of methodCalls) {
+          const response = call[0] === 'EmailSubmission/set'
+            ? await invokeComposer([call])
+            : await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap', { accountId: requestClient.getAccountId(), methodCalls: [call] });
+          responses.push(...response.methodResponses);
+        }
+        return { methodResponses: responses };
+      }
       if (methodCalls.some(([method]) => method === 'EmailSubmission/set' || method === 'Identity/get')) {
         if (typeof navigator !== 'undefined' && navigator.onLine) {
-          const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('composer_request', { methodCalls });
+          const response = await invokeComposer(methodCalls);
           if (methodCalls.some(([method]) => method === 'EmailSubmission/set')) {
             window.dispatchEvent(new Event('desktop-write-queued'));
           }
           return response;
         }
         if (methodCalls.some(([method]) => method === 'EmailSubmission/set')) {
-          throw new Error('Zum Senden muss eine Internetverbindung bestehen. Der Entwurf bleibt geöffnet.');
+          throw new OfflineUnavailableError('Offline: Die Nachricht wurde nicht versendet. Der Entwurf bleibt erhalten.');
         }
       }
       const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap', { accountId: requestClient.getAccountId(), methodCalls });
@@ -64,7 +86,7 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
       return response;
     },
     record: () => {}, noteNetwork: () => {}, serverGone: async () => true,
-    blob: async () => null, recordBlob: () => {}, holdUpload: async () => null,
+    blob: (_client, blobId, accountId) => readDesktopBlob(accountId, blobId), recordBlob: () => {}, holdUpload: async () => null,
   });
   const config = applyLiteConfig({ appName: 'Herakles Mail', jmapServerUrl: info.serverUrl, noThirdPartyTraffic: true });
   const policy = { ...DEFAULT_POLICY, features: { ...DEFAULT_POLICY.features, pluginsEnabled: true, pluginsUploadEnabled: true, requirePluginApproval: false } };
@@ -125,8 +147,18 @@ export function synchronizeBulwark(): Promise<void> {
 }
 async function synchronizeOnce() {
     if (!currentLogin) return;
+    const progress = (label: string) => window.dispatchEvent(new CustomEvent('desktop-sync-progress', { detail: label }));
+    progress('Sitzung');
     // Refresh the account inventory, not only message state: new/revoked shares change the session.
-    const info = await invoke<Bootstrap>('refresh_desktop_session');
+    const step = async <T,>(name: string, action: () => Promise<T>): Promise<T> => {
+      try { return await action(); } catch (error) {
+        const code = error instanceof Error ? error.name.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 48) : 'native_error';
+        await invoke('log_frontend_event', { level: 'error', area: 'sync', event: name, code }).catch(() => {});
+        throw error;
+      }
+    };
+    const info = await step('session_refresh_failed', () => invoke<Bootstrap>('refresh_desktop_session'));
+    window.dispatchEvent(new Event('desktop-server-reachable'));
     if (sessionFingerprint(info.session) !== sessionFingerprint(currentLogin.info.session) || info.readOnly !== currentLogin.info.readOnly) {
       const client = JMAPClient.fromOfflineSession(info.serverUrl, info.username, info.session);
       client.supportsSyntheticCalendarIds = async () => false;
@@ -143,19 +175,20 @@ async function synchronizeOnce() {
     useCalendarStore.getState().setSupported(calendarAccounts.length > 0);
     const failures: string[] = [];
     const attempt = async (command: string, accountId: string) => {
-      try { await invoke(command, { accountId }); } catch (error) { failures.push(error instanceof Error ? error.message : typeof error === 'string' ? error : 'Ein Konto konnte nicht abgeglichen werden.'); }
+      try { await step(`${command}_failed`, () => invoke(command, { accountId })); } catch (error) { failures.push(error instanceof Error ? error.message : typeof error === 'string' ? error : 'Ein Konto konnte nicht abgeglichen werden.'); }
     };
     // Fetch every folder tree before downloading entire mailboxes, so shares appear promptly.
-    for (const id of mailAccounts) await attempt('sync_mailboxes', id);
+    for (const [index, id] of mailAccounts.entries()) { progress(`Ordner ${index + 1}/${mailAccounts.length}`); await attempt('sync_mailboxes', id); }
     await useEmailStore.getState().fetchMailboxes(client);
-    for (const id of calendarAccounts) await attempt('sync_calendar', id);
+    for (const [index, id] of calendarAccounts.entries()) { progress(`Kalender ${index + 1}/${calendarAccounts.length}`); await attempt('sync_calendar', id); }
     if (calendarAccounts.length) {
-      await useCalendarStore.getState().fetchCalendars(client);
+      await step('local_calendars_refresh_failed', () => useCalendarStore.getState().fetchCalendars(client));
       const range = useCalendarStore.getState().dateRange;
       if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
     }
-    for (const id of mailAccounts) await attempt('sync_mail', id);
-    await useEmailStore.getState().fetchMailboxes(client);
-    await useEmailStore.getState().fetchEmails(client);
+    for (const [index, id] of mailAccounts.entries()) { progress(`Nachrichten ${index + 1}/${mailAccounts.length}`); await attempt('sync_mail', id); }
+    progress('Lokale Ansicht');
+    await step('local_mailboxes_refresh_failed', () => useEmailStore.getState().fetchMailboxes(client));
+    await step('local_emails_refresh_failed', () => useEmailStore.getState().fetchEmails(client));
     if (failures.length) throw new Error([...new Set(failures)].join(' · '));
 }

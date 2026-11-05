@@ -43,9 +43,13 @@ Codeauswertung. Die Hauptanwendung erlaubt weiterhin kein `unsafe-eval`.
 - Server-Proxys, verwaltete Server-Plugins und Credential-Vaults sind noch nicht portiert.
 - Externe HTTP-Dienste und eingebettete externe Sidebar-Seiten sind derzeit nicht freigegeben.
 - Mail-Lese-APIs funktionieren nur, soweit der lokale JMAP-Adapter sie unterstützt. Im ausdrücklich aktivierten Test-Schreibmodus sind ausschließlich Gelesen-/Markiert-Updates über die lokale Warteschlange erlaubt; andere Mail-Schreibaktionen bleiben gesperrt.
-- Kalender-, Kontakt-, Datei-, Versand- und Blob-APIs benötigen weitere native Datenadapter.
+- Kalender-, Kontakt-, Datei- und Versand-APIs benötigen weitere native Datenadapter.
 
 Daher ist keine pauschale Kompatibilität mit allen vorhandenen Bulwark-Plugins
 zugesagt. Die ursprünglichen Erweiterungspunkte bleiben die Grundlage; es wird kein
 zweites, inkompatibles Add-on-Format eingeführt.
 
+
+Blob-Downloads nutzen inzwischen den nativen redb-Cache auch fuer die originalen
+Mail-Anhangsfunktionen. Uploads und Composer-Anhaenge bleiben offen; Limits und
+Offline-Verhalten stehen in docs/architecture.md.

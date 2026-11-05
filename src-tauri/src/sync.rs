@@ -82,6 +82,7 @@ pub struct Connection {
     username: String,
     password: String,
     read_only: bool,
+    download_template: Option<String>,
 }
 
 fn authorize_method(read_only: bool, method: &str) -> Result<(), SyncError> {
@@ -124,7 +125,118 @@ async fn read_json(mut response: reqwest::Response) -> Result<Value, SyncError> 
     serde_json::from_slice(&body).map_err(|_| SyncError::Protocol)
 }
 
+fn blob_download_url(
+    origin: &url::Url,
+    template: &str,
+    account: &str,
+    blob: &str,
+) -> Result<url::Url, SyncError> {
+    if [account, blob].iter().any(|id| {
+        id.is_empty()
+            || *id == "."
+            || *id == ".."
+            || id.len() > 4096
+            || id.chars().any(char::is_control)
+    }) {
+        return Err(SyncError::Protocol);
+    }
+    fn encode(value: &str) -> String {
+        let mut output = String::new();
+        for byte in value.bytes() {
+            if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+                output.push(byte as char);
+            } else {
+                output.push_str(&format!("%{byte:02X}"));
+            }
+        }
+        output
+    }
+    let mut expanded = template.to_owned();
+    for (variable, value) in [
+        ("accountId", account),
+        ("blobId", blob),
+        ("name", "download"),
+        ("type", "application/octet-stream"),
+    ] {
+        let token = format!("{{{variable}}}");
+        if !expanded.contains(&token) {
+            return Err(SyncError::Protocol);
+        }
+        expanded = expanded.replace(&token, &encode(value));
+    }
+    if expanded.contains(['{', '}']) {
+        return Err(SyncError::Protocol);
+    }
+    let url = url::Url::parse(&expanded).map_err(|_| SyncError::Protocol)?;
+    if url.scheme() != "https"
+        || url.origin() != origin.origin()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(SyncError::Protocol);
+    }
+    Ok(url)
+}
+
 impl Connection {
+    pub async fn download_blob(
+        &self,
+        account: &str,
+        reference: &crate::blobs::BlobRef,
+    ) -> Result<Vec<u8>, SyncError> {
+        if reference
+            .size
+            .is_some_and(|size| size > crate::blobs::MAX_BLOB_BYTES as u64)
+        {
+            return Err(SyncError::Local(
+                "Anhang ist groesser als das Downloadlimit von 25 MiB.".into(),
+            ));
+        }
+        let url = blob_download_url(
+            &self.url,
+            self.download_template
+                .as_deref()
+                .ok_or(SyncError::Protocol)?,
+            account,
+            &reference.id,
+        )?;
+        let mut response = self
+            .client
+            .get(url)
+            .basic_auth(&self.username, Some(&self.password))
+            .send()
+            .await
+            .map_err(|_| SyncError::Network)?;
+        if response.status() != reqwest::StatusCode::OK {
+            return Err(SyncError::Protocol);
+        }
+        if response
+            .content_length()
+            .is_some_and(|size| size > crate::blobs::MAX_BLOB_BYTES as u64)
+        {
+            return Err(SyncError::Local(
+                "Anhang ist groesser als das Downloadlimit von 25 MiB.".into(),
+            ));
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| SyncError::Network)? {
+            if bytes.len().saturating_add(chunk.len()) > crate::blobs::MAX_BLOB_BYTES {
+                return Err(SyncError::Local(
+                    "Anhang ist groesser als das Downloadlimit von 25 MiB.".into(),
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if reference
+            .size
+            .is_some_and(|size| size != bytes.len() as u64)
+        {
+            return Err(SyncError::Protocol);
+        }
+        Ok(bytes)
+    }
+
     pub async fn discover(config: &TestConfig, account: &str) -> Result<Self, SyncError> {
         Self::discover_for(config, account, MAIL).await
     }
@@ -165,6 +277,7 @@ impl Connection {
             username: config.username.clone(),
             password: config.password.clone(),
             read_only: config.read_only,
+            download_template: session["downloadUrl"].as_str().map(str::to_owned),
         })
     }
 }
@@ -316,11 +429,80 @@ impl Remote for Connection {
     }
 }
 
+fn submission_receipt_key(config: &TestConfig, account: &str, id: &str) -> String {
+    format!(
+        "submission-receipt:{}",
+        serde_json::to_string(&(scope(config, account), id)).expect("string tuple")
+    )
+}
+fn record_submission_receipts(
+    store: &Store,
+    config: &TestConfig,
+    calls: &[(String, Value, String)],
+    response: &Value,
+) -> Result<(), SyncError> {
+    for (method, args, call_id) in calls {
+        if method != "EmailSubmission/set" {
+            continue;
+        }
+        let account = args["accountId"].as_str().ok_or(SyncError::Protocol)?;
+        if let Some(created) = response["methodResponses"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|row| row[0] == "EmailSubmission/set" && row[2] == *call_id)
+            .and_then(|row| row[1]["created"].as_object())
+        {
+            for value in created.values() {
+                if let Some(id) = value["id"].as_str() {
+                    store.put(&submission_receipt_key(config, account, id), "accepted")?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+fn validate_submission_cleanup(
+    store: &Store,
+    config: &TestConfig,
+    calls: &[(String, Value, String)],
+) -> Result<(), SyncError> {
+    for (method, args, _) in calls {
+        let Some(object) = args.as_object() else {
+            return Err(SyncError::Protocol);
+        };
+        if method != "EmailSubmission/set"
+            || object
+                .keys()
+                .any(|key| !["accountId", "destroy"].contains(&key.as_str()))
+        {
+            return Err(SyncError::Protocol);
+        }
+        let account = args["accountId"].as_str().ok_or(SyncError::Protocol)?;
+        let ids = args["destroy"]
+            .as_array()
+            .filter(|ids| !ids.is_empty() && ids.len() <= 50)
+            .ok_or(SyncError::Protocol)?;
+        for id in ids {
+            let id = id.as_str().ok_or(SyncError::Protocol)?;
+            if store
+                .get(&submission_receipt_key(config, account, id))?
+                .as_deref()
+                != Some("accepted")
+            {
+                return Err(SyncError::Method("forbidden".into()));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Narrow native bridge for Bulwark's unchanged composer. All credentials and
 /// authenticated HTTP stay in Rust; only identity reads and explicit send
 /// batches are accepted here. Submission requests are deliberately never
 /// retried because a lost response could otherwise send a duplicate message.
 pub async fn composer_request(
+    store: &Store,
     config: &TestConfig,
     method_calls: &[(String, Value, String)],
 ) -> Result<Value, SyncError> {
@@ -343,7 +525,14 @@ pub async fn composer_request(
     }
     let sending = method_calls
         .iter()
-        .any(|(method, _, _)| method == "EmailSubmission/set");
+        .any(|(method, args, _)| method == "EmailSubmission/set" && args.get("create").is_some());
+    let cleaning = !sending
+        && method_calls
+            .iter()
+            .any(|(method, _, _)| method == "EmailSubmission/set");
+    if cleaning {
+        validate_submission_cleanup(store, config, method_calls)?;
+    }
     if method_calls
         .iter()
         .any(|(method, _, _)| method == "Email/set")
@@ -353,7 +542,7 @@ pub async fn composer_request(
             "Email/set ist im Composer nur zusammen mit einer Sendung erlaubt.".into(),
         ));
     }
-    if sending && config.read_only {
+    if (sending || cleaning) && config.read_only {
         return Err(SyncError::Local(
             "Nur-Lese-Modus: Versand ist gesperrt.".into(),
         ));
@@ -385,7 +574,7 @@ pub async fn composer_request(
         if !account_supports(&session, account, capability) {
             return Err(SyncError::Method("accountNotSupportedByMethod".into()));
         }
-        if sending && session["accounts"][account]["isReadOnly"] == true {
+        if (sending || cleaning) && session["accounts"][account]["isReadOnly"] == true {
             return Err(SyncError::Method("forbidden".into()));
         }
         if sending
@@ -406,7 +595,14 @@ pub async fn composer_request(
                 "Der Composer darf nur neue Nachrichten anlegen.".into(),
             ));
         }
-        if method == "EmailSubmission/set"
+        if sending
+            && method == "EmailSubmission/set"
+            && (args.get("destroy").is_some() || args.get("update").is_some())
+        {
+            return Err(SyncError::Protocol);
+        }
+        if sending
+            && method == "EmailSubmission/set"
             && (!account_supports(&session, account, SUBMISSION)
                 || args
                     .get("create")
@@ -437,6 +633,10 @@ pub async fn composer_request(
         .map_err(|_| SyncError::Network)?;
     let answer = read_json(response).await?;
     if sending {
+        if record_submission_receipts(store, config, method_calls, &answer).is_err() {
+            // An accepted send must not become a failed send because local housekeeping failed.
+            crate::logging::event("error", "composer", "receipt_persist_failed", json!({}));
+        }
         // The response is definitive: clean only the exact new copy if the
         // submission was refused or every recipient was rejected. We never
         // retry an ambiguous transport result.
@@ -655,7 +855,16 @@ async fn push_keyword(
     } else {
         Value::Null
     };
-    let response = remote.call("Email/set", json!({"accountId":account,"ifInState":state,"update":{&operation.email_id:{patch:enabled}}})).await?;
+    let update = match &operation.mailbox_ids {
+        Some(ids) => json!({"mailboxIds":ids}),
+        None => json!({patch:enabled}),
+    };
+    let response = remote
+        .call(
+            "Email/set",
+            json!({"accountId":account,"ifInState":state,"update":{&operation.email_id:update}}),
+        )
+        .await?;
     if response["updated"].get(&operation.email_id).is_some() {
         store.acknowledge_keyword(scope, operation)?;
         return Ok(());
@@ -849,6 +1058,176 @@ mod tests {
     use std::{collections::VecDeque, sync::Mutex};
 
     #[test]
+    fn submission_cleanup_requires_a_persisted_account_scoped_receipt() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipts.redb");
+        let config = TestConfig {
+            url: url::Url::parse("https://mail.example.test/jmap").unwrap(),
+            username: "test".into(),
+            password: String::new(),
+            read_only: false,
+        };
+        let calls = vec![(
+            "EmailSubmission/set".into(),
+            json!({"accountId":"a","create":{"1":{"emailId":"e"}}}),
+            "send".into(),
+        )];
+        {
+            let store = Store::open(&path).unwrap();
+            record_submission_receipts(&store, &config, &calls, &json!({"methodResponses":[["EmailSubmission/set",{"created":{"1":{"id":"submission"}}},"send"]]})).unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let cleanup = |account: &str, id: &str| {
+            vec![(
+                "EmailSubmission/set".into(),
+                json!({"accountId":account,"destroy":[id]}),
+                "cleanup".into(),
+            )]
+        };
+        assert!(validate_submission_cleanup(&store, &config, &cleanup("a", "submission")).is_ok());
+        assert!(validate_submission_cleanup(&store, &config, &cleanup("b", "submission")).is_err());
+        assert!(validate_submission_cleanup(&store, &config, &cleanup("a", "unknown")).is_err());
+        assert!(validate_submission_cleanup(
+            &store,
+            &config,
+            &[(
+                "EmailSubmission/set".into(),
+                json!({"accountId":"a","destroy":["submission"],"update":{"other":{}}}),
+                "bad".into()
+            )]
+        )
+        .is_err());
+        let mut other_login = config;
+        other_login.username = "other".into();
+        assert!(
+            validate_submission_cleanup(&store, &other_login, &cleanup("a", "submission")).is_err()
+        );
+        other_login.username = "test".into();
+        other_login.read_only = true;
+        tauri::async_runtime::block_on(async {
+            assert!(matches!(
+                composer_request(&store, &other_login, &cleanup("a", "submission")).await,
+                Err(SyncError::Local(_))
+            ));
+        });
+    }
+
+    #[test]
+    #[ignore = "Read-only live attachment download into a temporary redb database"]
+    fn live_blob_read_only() {
+        tauri::async_runtime::block_on(async {
+            let mut config =
+                TestConfig::load().unwrap_or_else(|_| panic!("Testzugang nicht verfuegbar"));
+            config.read_only = true;
+            let session: Value = serde_json::from_slice(
+                &crate::session::session_bytes(&config)
+                    .await
+                    .unwrap_or_else(|_| panic!("Sitzung nicht erreichbar")),
+            )
+            .unwrap_or_else(|_| panic!("Ungueltige Sitzung"));
+            let account = session["primaryAccounts"][MAIL]
+                .as_str()
+                .expect("Kein primaeres Mailkonto");
+            let remote = Connection::discover(&config, account)
+                .await
+                .unwrap_or_else(|e| panic!("{}", e.message()));
+            let query = remote
+                .call(
+                    "Email/query",
+                    json!({"accountId":account,"filter":{"hasAttachment":true},"limit":10}),
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{}", e.message()));
+            let result = remote.call("Email/get", json!({"accountId":account,"ids":query["ids"],"properties":["id","blobId","size","keywords","attachments","bodyStructure"]})).await.unwrap_or_else(|e| panic!("{}",e.message()));
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("attachment-live.redb");
+            let store = Store::open(&path).unwrap();
+            let rows = result["list"].as_array().expect("Nachrichtenliste fehlt");
+            store
+                .apply_remote("live", Collection::Email, None, "sample", rows, &[], true)
+                .unwrap();
+            let reference = crate::blobs::references(&store.local_mail("live").unwrap())
+                .into_iter()
+                .find(|r| r.attachment && r.size.is_some_and(|size| size <= 1024 * 1024));
+            let Some(reference) = reference else {
+                panic!("Kein kleiner Anhang in der begrenzten Stichprobe vorhanden");
+            };
+            let bytes = remote
+                .download_blob(account, &reference)
+                .await
+                .unwrap_or_else(|e| panic!("{}", e.message()));
+            store.cache_blob("live", &reference.id, &bytes).unwrap();
+            drop(store);
+            let reopened = Store::open(&path).unwrap();
+            assert!(
+                reopened
+                    .blob_bytes("live", &reference.id)
+                    .unwrap()
+                    .as_deref()
+                    == Some(bytes.as_slice())
+            );
+            assert!(reopened
+                .cached_blob("live", &reference.id)
+                .unwrap()
+                .is_some());
+            assert!(reopened
+                .blob_bytes("other-account", &reference.id)
+                .unwrap()
+                .is_none());
+            println!("Ein Anhang read-only geladen und nach redb-Neustart geprueft; keine Inhalte protokolliert.");
+        });
+    }
+
+    #[test]
+    fn blob_download_templates_encode_ids_and_reject_credential_leaks() {
+        let origin = url::Url::parse("https://mail.example.test/jmap").unwrap();
+        let template = "https://mail.example.test/download/{accountId}/{blobId}/{name}?type={type}";
+        let url = blob_download_url(&origin, template, "shared/a", "blob?#/{other}").unwrap();
+        assert!(url
+            .as_str()
+            .contains("shared%2Fa/blob%3F%23%2F%7Bother%7D/download"));
+        assert_eq!(url.query(), Some("type=application%2Foctet-stream"));
+        for bad in [
+            template.replace("https:", "http:"),
+            template.replace("mail.example.test", "other.test"),
+            template.replace("mail.example.test", "user@mail.example.test"),
+            format!("{template}#fragment"),
+            template.replace("{blobId}", "missing"),
+            format!("{template}&extra={{unknown}}"),
+        ] {
+            assert!(blob_download_url(&origin, &bad, "a", "b").is_err());
+        }
+        assert!(blob_download_url(&origin, template, "a", "..").is_err());
+    }
+
+    #[test]
+    fn mailbox_move_conflict_retains_queue_and_success_updates_baseline() {
+        tauri::async_runtime::block_on(async {
+            let (_dir, store) = store();
+            seed(&store);
+            store
+                .queue_email_update("scope", "m1", &[], Some(json!({"trash":true})))
+                .unwrap();
+            let operation = store.local_mail("scope").unwrap().pending.remove(0);
+            let rejected = Script::new(vec![(
+                "Email/set",
+                Err(SyncError::Method("stateMismatch".into())),
+            )]);
+            assert!(push_keyword(&store, &rejected, "scope", "a", &operation)
+                .await
+                .is_err());
+            assert_eq!(store.local_mail("scope").unwrap().pending.len(), 1);
+            let accepted = Script::new(vec![("Email/set", Ok(json!({"updated":{"m1":null}})))]);
+            push_keyword(&store, &accepted, "scope", "a", &operation)
+                .await
+                .unwrap();
+            let local = store.local_mail("scope").unwrap();
+            assert!(local.pending.is_empty());
+            assert_eq!(local.emails[0]["mailboxIds"], json!({"trash":true}));
+        });
+    }
+
+    #[test]
     fn identity_and_submission_calls_include_the_submission_capability() {
         let identity = vec![("Identity/get".into(), json!({"accountId":"a"}), "0".into())];
         let mailboxes = vec![("Mailbox/get".into(), json!({"accountId":"a"}), "0".into())];
@@ -910,7 +1289,10 @@ mod tests {
                 account_supports(&session, account, SUBMISSION),
                 "Submission-Capability fehlt für das primäre Konto."
             );
+            let directory = tempfile::tempdir().unwrap();
+            let store = Store::open(&directory.path().join("composer-read.redb")).unwrap();
             let response = composer_request(
+                &store,
                 &config,
                 &[(
                     "Identity/get".into(),
@@ -1181,7 +1563,11 @@ mod tests {
             if method == "Email/set" {
                 assert!(args["ifInState"].is_string());
                 if args.get("update").is_some() {
-                    assert_eq!(args["update"]["m1"]["keywords/$seen"], true);
+                    if args["update"]["m1"].get("mailboxIds").is_some() {
+                        assert_eq!(args["update"]["m1"], json!({"mailboxIds":{"trash":true}}));
+                    } else {
+                        assert_eq!(args["update"]["m1"]["keywords/$seen"], true);
+                    }
                 }
             }
             result

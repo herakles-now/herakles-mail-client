@@ -51,7 +51,8 @@ export default function BulwarkApp() {
   const [status, setStatus] = useState('Lokale Sitzung laden …');
   const [writes, setWrites] = useState({ pending: 0, blocked: 0, pendingDeletes: 0, blockedDeletes: 0 });
   const [offlineMode, setOfflineMode] = useState(false);
-  const [connectivity, setConnectivity] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [connectivity, setConnectivity] = useState<'syncing' | 'online' | 'offline'>('syncing');
+  const [syncPhase, setSyncPhase] = useState('Sitzung');
   const offlineModeRef = useRef(false);
   useEffect(() => {
     const closeProfileMenu = (event: PointerEvent) => {
@@ -75,38 +76,80 @@ export default function BulwarkApp() {
     let active = true;
     let timer: number | undefined;
     let syncing = false;
+    let syncPending = false;
+    let pushTimer: number | undefined;
+    let lastFinished = -Infinity;
+    let pushConnected = false;
+    let pushStatusVersion = 0;
+    let stopPushStatus = () => {};
+    let armSafety = () => {};
+    let serverReached = false;
+    let networkAvailable = navigator.onLine;
+    const onServerReachable = () => { serverReached = true; };
+    const onSyncProgress = (event: Event) => {
+      if (active && !offlineModeRef.current && networkAvailable) {
+        setConnectivity('syncing');
+        setSyncPhase((event as CustomEvent<string>).detail);
+      }
+    };
     let visibilityCleanup = () => {};
     let stopPush = () => {};
-    let requestSync = () => {};
+    let requestSync = (_reason = 'manual') => {};
     const updateWrites = () => { void invoke<typeof writes>('write_status').then((result) => { if (active) setWrites(result); }).catch(() => {}); };
-    const queued = () => { updateWrites(); requestSync(); };
+    const queued = () => { updateWrites(); requestSync('write'); };
     const storageError = () => {
       void invoke('log_frontend_event', { level: 'error', area: 'storage', event: 'ui_storage_write_failed' }).catch(() => {});
       setStatus('Lokales Speichern fehlgeschlagen. Bitte Speicherplatz prüfen.');
     };
     const onOffline = () => {
+      networkAvailable = false;
       if (!offlineModeRef.current) {
         setConnectivity('offline');
+        setStatus('Offline · lokale Daten verfügbar');
         void invoke('set_network_enabled', { enabled: false }).catch(() => {});
       }
     };
     const onOnline = () => {
+      networkAvailable = true;
       if (!offlineModeRef.current) {
-        setConnectivity('checking');
+        setConnectivity('syncing');
         void invoke('set_network_enabled', { enabled: true }).then(() => {
           window.dispatchEvent(new Event('desktop-sync-requested'));
         }).catch(() => {});
       }
     };
-    const onSyncRequested = () => requestSync();
+    const onSyncRequested = () => requestSync('manual');
     window.addEventListener('desktop-storage-error', storageError);
     window.addEventListener('desktop-write-queued', queued);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     window.addEventListener('desktop-sync-requested', onSyncRequested);
-    void listen('jmap-push', () => requestSync()).then((unlisten) => {
+    window.addEventListener('desktop-server-reachable', onServerReachable);
+    window.addEventListener('desktop-sync-progress', onSyncProgress);
+    void listen('jmap-push', () => {
+      window.clearTimeout(pushTimer);
+      pushTimer = window.setTimeout(() => requestSync('push'), 750);
+    }).then((unlisten) => {
       if (active) stopPush = unlisten;
       else unlisten();
+    }).catch(() => {});
+    const applyPushStatus = (connected: boolean) => {
+      const reconnect = connected && !pushConnected;
+      pushConnected = connected;
+      if (connected) {
+        if (!syncPending) window.clearTimeout(timer);
+        if (reconnect && !offlineModeRef.current && networkAvailable) requestSync('push_reconnect');
+      } else armSafety();
+    };
+    void listen<boolean>('jmap-push-status', (event) => {
+      pushStatusVersion++;
+      applyPushStatus(event.payload);
+    }).then(async (unlisten) => {
+      if (!active) { unlisten(); return; }
+      stopPushStatus = unlisten;
+      const version = pushStatusVersion;
+      const connected = await invoke<boolean>('push_status').catch(() => false);
+      if (active && version === pushStatusVersion) applyPushStatus(connected);
     }).catch(() => {});
     const start = async () => {
       const registry = await invoke<{ profiles: Profile[]; activeProfileId: string | null }>('profile_inventory');
@@ -124,7 +167,7 @@ export default function BulwarkApp() {
       offlineModeRef.current = forcedOffline;
       setOfflineMode(forcedOffline);
       const enabled = !forcedOffline;
-      setConnectivity(enabled && navigator.onLine ? 'checking' : 'offline');
+      setConnectivity(enabled && navigator.onLine ? 'syncing' : 'offline');
       await invoke('set_network_enabled', { enabled });
       return bootstrapBulwark();
     };
@@ -132,46 +175,74 @@ export default function BulwarkApp() {
       if (!result) return;
       if (!active) return;
       setInfo(result);
-      const sync = () => {
-        if (offlineModeRef.current) {
+      const sync = (reason = 'startup') => {
+        if (offlineModeRef.current || !networkAvailable) {
           setConnectivity('offline');
           setStatus('Offline · lokale Daten verfügbar');
           void invoke('set_network_enabled', { enabled: false }).catch(() => {});
           return;
         }
-        if (syncing) return;
+        void invoke('log_frontend_event', { level: 'info', area: 'sync', event: syncing ? 'sync_requested_while_running' : 'sync_started', code: reason }).catch(() => {});
+        if (syncing) { syncPending = true; return; }
+        window.clearTimeout(timer);
         syncing = true;
+        syncPending = false;
+        serverReached = false;
+        setSyncPhase('Sitzung');
+        setConnectivity('syncing');
         setStatus('Synchronisierung …');
-        synchronizeBulwark().then(() => { if (active) { setConnectivity('online'); setStatus('Lokal verfügbar · Abgleich abgeschlossen'); } })
+        synchronizeBulwark().then(() => { if (active && !offlineModeRef.current && networkAvailable) { setConnectivity('online'); setStatus('Lokal verfügbar · Abgleich abgeschlossen'); } })
           .catch((reason) => {
             void invoke('log_frontend_event', { level: 'error', area: 'sync', event: 'ui_sync_failed' }).catch(() => {});
-            if (active) { setConnectivity('offline'); setStatus(reason instanceof Error ? `Abgleich ausstehend · ${reason.message}` : 'Abgleich ausstehend · lokaler Datenbestand verfügbar'); }
-          }).finally(() => { syncing = false; updateWrites(); });
+            if (active && !offlineModeRef.current && networkAvailable) {
+              setConnectivity(serverReached ? 'online' : 'offline');
+              const message = reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : 'Lokaler Datenbestand bleibt verfügbar';
+              setStatus(`Abgleich fehlgeschlagen · ${message}`);
+            }
+          }).finally(() => {
+            void invoke('log_frontend_event', { level: 'info', area: 'sync', event: 'sync_finished' }).catch(() => {});
+            syncing = false;
+            lastFinished = performance.now();
+            updateWrites();
+            if (active && !offlineModeRef.current && networkAvailable) {
+              if (syncPending) timer = window.setTimeout(() => sync('pending'), 750);
+              else armSafety();
+            }
+          });
       };
       requestSync = sync;
-      const onVisibilityChange = () => { if (document.visibilityState === 'visible') sync(); };
+      armSafety = () => {
+        if (!pushConnected && !syncing && !offlineModeRef.current && networkAvailable) {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => sync('fallback'), 60_000);
+        }
+      };
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible' && !pushConnected && !syncing && performance.now() - lastFinished >= 60_000) sync('visibility');
+      };
       document.addEventListener('visibilitychange', onVisibilityChange);
       visibilityCleanup = () => document.removeEventListener('visibilitychange', onVisibilityChange);
-      updateWrites(); sync(); timer = window.setInterval(sync, 15_000);
+      updateWrites(); sync();
     }).catch((reason) => {
       void invoke('log_frontend_event', { level: 'error', area: 'ui', event: 'bootstrap_failed' }).catch(() => {});
       if (active) setError(typeof reason === 'string' ? reason : 'Desktop-Start fehlgeschlagen.');
     });
-    return () => { active = false; window.clearInterval(timer); visibilityCleanup(); stopPush(); window.removeEventListener('desktop-storage-error', storageError); window.removeEventListener('desktop-write-queued', queued); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('desktop-sync-requested', onSyncRequested); };
+    return () => { active = false; window.clearTimeout(timer); window.clearTimeout(pushTimer); visibilityCleanup(); stopPush(); stopPushStatus(); window.removeEventListener('desktop-storage-error', storageError); window.removeEventListener('desktop-write-queued', queued); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('desktop-sync-requested', onSyncRequested); window.removeEventListener('desktop-server-reachable', onServerReachable); window.removeEventListener('desktop-sync-progress', onSyncProgress); };
   }, []);
   const toggleOfflineMode = async () => {
     if (!offlineMode && connectivity === 'offline') {
       await invoke('set_network_enabled', { enabled: true });
-      setConnectivity('checking');
+      setConnectivity('syncing');
       window.dispatchEvent(new Event('desktop-sync-requested'));
       return;
     }
     const next = !offlineMode;
     offlineModeRef.current = next;
     setOfflineMode(next);
+    if (next) setStatus('Offline · lokale Daten verfügbar');
     await invoke('desktop_kv_put', { key: 'ui/network-mode', value: next ? 'offline' : 'auto' });
     const enabled = !next;
-    setConnectivity(enabled && navigator.onLine ? 'checking' : 'offline');
+    setConnectivity(enabled && navigator.onLine ? 'syncing' : 'offline');
     await invoke('set_network_enabled', { enabled });
     if (enabled) window.dispatchEvent(new Event('desktop-sync-requested'));
   };
@@ -179,7 +250,8 @@ export default function BulwarkApp() {
   if (!info) return <div className="desktop-start"><h1>Herakles Mail</h1><p role="status">{error || status}</p></div>;
   return <NextIntlClientProvider locale="de" messages={messages} timeZone="Europe/Belgrade">
     <ThemeProvider><RateLimitToastProvider><TourProvider>
-      <div className="desktop-status" role="status" title="Im Test-Schreibmodus sind Gelesen/Ungelesen, Markierungen und Entwurfsaktionen angebunden.">{info.readOnly ? 'Nur Lesen' : 'Test-Schreibmodus'} · {status}{writes.pending > 0 && ` · ${writes.pending} ausstehend`}{writes.blocked > 0 && ` · ${writes.blocked} abgelehnt`}{writes.pendingDeletes > 0 && ` · ${writes.pendingDeletes} Entwurfslöschung(en) ausstehend`}{writes.blockedDeletes > 0 && ` · ${writes.blockedDeletes} Entwurfslöschung(en) blockiert`}</div>
+      <footer className="desktop-statusbar" aria-label="Desktop-Status">
+      <div className="desktop-status" role="status" title="Im Test-Schreibmodus sind Gelesen/Ungelesen, Markierungen, Verschieben, Papierkorb und Entwurfsaktionen angebunden.">{info.readOnly ? 'Nur Lesen' : 'Test-Schreibmodus'} · {status}{writes.pending > 0 && ` · ${writes.pending} ausstehend`}{writes.blocked > 0 && ` · ${writes.blocked} abgelehnt`}{writes.pendingDeletes > 0 && ` · ${writes.pendingDeletes} Entwurfslöschung(en) ausstehend`}{writes.blockedDeletes > 0 && ` · ${writes.blockedDeletes} Entwurfslöschung(en) blockiert`}</div>
       <details className="desktop-profile-menu" ref={profileMenuRef}>
         <summary>Profile &amp; Konten</summary>
         <div className="desktop-profile-panel">
@@ -197,13 +269,17 @@ export default function BulwarkApp() {
         {error && <p className="desktop-profile-error" role="alert">{error}</p>}
         </div>
       </details>
-      {showAccountSetup && <div className="desktop-setup-overlay"><AccountSetup profileId={setupProfileId} onComplete={() => window.location.reload()} /><button type="button" className="desktop-setup-cancel" onClick={() => setShowAccountSetup(false)}>Abbrechen</button></div>}
+
       <button className={`desktop-network-toggle is-${connectivity}`} type="button" aria-pressed={offlineMode} onClick={() => { void toggleOfflineMode().catch(() => setConnectivity('offline')); }} title={offlineMode ? 'Offline-Modus beenden und sofort verbinden' : connectivity === 'offline' ? 'Verbindung erneut versuchen' : 'Offline-Modus einschalten'}>
         <span className="desktop-network-indicator" aria-hidden="true" />
-        {offlineMode ? 'Offline · Nur lokal' : connectivity === 'online' ? 'Online · Verbunden' : connectivity === 'checking' ? 'Verbinde …' : 'Offline · Verbindung getrennt'}
+        {offlineMode ? 'Offline · Nur lokal' : connectivity === 'online' ? 'Online · Verbunden' : connectivity === 'syncing' ? `Sync · ${syncPhase}` : 'Offline · Verbindung getrennt'}
       </button>
+      </footer>
+      {showAccountSetup && <div className="desktop-setup-overlay"><AccountSetup profileId={setupProfileId} onComplete={() => window.location.reload()} /><button type="button" className="desktop-setup-cancel" onClick={() => setShowAccountSetup(false)}>Abbrechen</button></div>}
+      <div className="desktop-workspace">
       <Routes /><PluginDialogHost /><PluginConsentDialog /><PluginConnectDialog />
       <PluginAppEvents /><PluginPageNavigator /><ExternalRecipientConfirmHost />
+      </div>
     </TourProvider></RateLimitToastProvider></ThemeProvider>
   </NextIntlClientProvider>;
 }

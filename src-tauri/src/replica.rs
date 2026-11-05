@@ -40,6 +40,8 @@ pub struct PendingKeyword {
     pub sequence: u64,
     pub email_id: String,
     pub keyword: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mailbox_ids: Option<Value>,
     pub enabled: bool,
     #[serde(default)]
     pub blocked: Option<String>,
@@ -502,7 +504,16 @@ impl Store {
         email_id: &str,
         changes: &[(String, bool)],
     ) -> Result<(), String> {
-        // This first implementation intentionally exposes only idempotent flag operations.
+        self.queue_email_update(scope, email_id, changes, None)
+    }
+
+    pub fn queue_email_update(
+        &self,
+        scope: &str,
+        email_id: &str,
+        changes: &[(String, bool)],
+        mailbox_ids: Option<Value>,
+    ) -> Result<(), String> {
         if changes
             .iter()
             .any(|(keyword, _)| !["$seen", "$flagged"].contains(&keyword.as_str()))
@@ -527,7 +538,11 @@ impl Store {
                 .transpose()?
                 .unwrap_or_default();
             let mut queue = tx.open_table(OUTBOX).map_err(database_error)?;
-            for (keyword, enabled) in changes {
+            let mut entries = changes.to_vec();
+            if mailbox_ids.is_some() {
+                entries.push((String::new(), false));
+            }
+            for (keyword, enabled) in &entries {
                 meta.next_operation = meta
                     .next_operation
                     .checked_add(1)
@@ -536,6 +551,11 @@ impl Store {
                     sequence: meta.next_operation,
                     email_id: email_id.into(),
                     keyword: keyword.clone(),
+                    mailbox_ids: if keyword.is_empty() {
+                        mailbox_ids.clone()
+                    } else {
+                        None
+                    },
                     enabled: *enabled,
                     blocked: None,
                 };
@@ -609,6 +629,10 @@ impl Store {
 }
 
 fn apply_keyword(email: &mut Value, operation: &PendingKeyword) -> Result<(), String> {
+    if let Some(ids) = &operation.mailbox_ids {
+        email["mailboxIds"] = ids.clone();
+        return Ok(());
+    }
     let keywords = email
         .get_mut("keywords")
         .and_then(Value::as_object_mut)
@@ -638,6 +662,46 @@ mod tests {
                 true,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn mailbox_move_survives_restart_and_newer_move_survives_ack() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("move.redb");
+        {
+            let store = Store::open(&path).unwrap();
+            seed(&store, "a");
+            store
+                .queue_email_update("a", "m1", &[], Some(json!({"trash":true})))
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let local = store.local_mail("a").unwrap();
+        assert_eq!(local.emails[0]["mailboxIds"], json!({"trash":true}));
+        assert!(store.local_mail("b").unwrap().pending.is_empty());
+        let older = local.pending[0].clone();
+        store
+            .apply_remote(
+                "a",
+                Collection::Email,
+                Some("s1"),
+                "s2",
+                &[json!({"id":"m1","keywords":{},"mailboxIds":{"inbox":true}})],
+                &[],
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            store.local_mail("a").unwrap().emails[0]["mailboxIds"],
+            json!({"trash":true})
+        );
+        store
+            .queue_email_update("a", "m1", &[], Some(json!({"inbox":true})))
+            .unwrap();
+        store.acknowledge_keyword("a", &older).unwrap();
+        let local = store.local_mail("a").unwrap();
+        assert_eq!(local.emails[0]["mailboxIds"], json!({"inbox":true}));
+        assert_eq!(local.pending.len(), 1);
     }
 
     #[test]
