@@ -3,12 +3,14 @@ mod blobs;
 mod calendar;
 mod config;
 mod desktop;
+mod journal;
 mod logging;
 mod push;
 mod replica;
 mod session;
 mod storage;
 mod sync;
+mod writes;
 
 use session::SessionSummary;
 use tauri::{Manager, State};
@@ -63,7 +65,22 @@ fn push_status() -> bool {
 }
 
 #[tauri::command]
-fn set_network_enabled(enabled: bool, mode: State<'_, NetworkMode>) -> Result<(), String> {
+fn set_network_enabled(
+    enabled: bool,
+    mode: State<'_, NetworkMode>,
+    store: State<'_, storage::Store>,
+) -> Result<(), String> {
+    let config = config::TestConfig::load()?;
+    for account in all_change_accounts(&store, &config)? {
+        store.set_change_review(
+            &sync::scope(&config, &account),
+            !enabled,
+            !enabled || !mode.enabled(),
+        )?;
+        if !enabled || !mode.enabled() {
+            journal::hold(&store, &sync::scope(&config, &account))?;
+        }
+    }
     mode.set_enabled(enabled);
     logging::event(
         "info",
@@ -183,6 +200,7 @@ fn write_status(store: State<'_, storage::Store>) -> Result<serde_json::Value, S
     let mut blocked = 0;
     let mut pending_deletes = 0;
     let mut blocked_deletes = 0;
+    let mut uncertain = 0;
     if let Some(raw) = store.get(&format!("{}:desktop-session", config.cache_key()))? {
         let session: serde_json::Value =
             serde_json::from_str(&raw).map_err(|_| "Lokale Sitzung ist ungültig.")?;
@@ -212,9 +230,159 @@ fn write_status(store: State<'_, storage::Store>) -> Result<serde_json::Value, S
             }
         }
     }
+    for account in all_change_accounts(&store, &config)? {
+        let entries = journal::entries(&store, &sync::scope(&config, &account))?;
+        pending += entries.iter().filter(|e| e.status != "applied").count();
+        blocked += entries.iter().filter(|e| e.status == "blocked").count();
+        uncertain += entries.iter().filter(|e| e.status == "uncertain").count();
+    }
     Ok(
-        serde_json::json!({"pending":pending,"blocked":blocked,"pendingDeletes":pending_deletes,"blockedDeletes":blocked_deletes}),
+        serde_json::json!({"pending":pending,"blocked":blocked,"uncertain":uncertain,"pendingDeletes":pending_deletes,"blockedDeletes":blocked_deletes}),
     )
+}
+
+fn change_accounts(
+    store: &storage::Store,
+    config: &config::TestConfig,
+) -> Result<Vec<String>, String> {
+    let Some(raw) = store.get(&format!("{}:desktop-session", config.cache_key()))? else {
+        return Ok(vec![]);
+    };
+    let session: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "Lokale Sitzung ist ungültig.")?;
+    Ok(session["accounts"]
+        .as_object()
+        .into_iter()
+        .flat_map(|accounts| accounts.keys())
+        .filter(|id| sync::account_supports(&session, id, "urn:ietf:params:jmap:mail"))
+        .cloned()
+        .collect())
+}
+
+fn all_change_accounts(
+    store: &storage::Store,
+    config: &config::TestConfig,
+) -> Result<Vec<String>, String> {
+    let Some(raw) = store.get(&format!("{}:desktop-session", config.cache_key()))? else {
+        return Ok(vec![]);
+    };
+    let session: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "Lokale Sitzung ist ungültig.")?;
+    Ok(session["accounts"]
+        .as_object()
+        .into_iter()
+        .flat_map(|a| a.keys())
+        .filter(|id| {
+            ["urn:ietf:params:jmap:mail", sync::CALENDARS, sync::FILES]
+                .iter()
+                .any(|cap| sync::account_supports(&session, id, cap))
+        })
+        .cloned()
+        .collect())
+}
+
+pub(crate) fn hold_offline_changes(store: &storage::Store) -> Result<(), String> {
+    let config = config::TestConfig::load()?;
+    for account in all_change_accounts(store, &config)? {
+        store.set_change_review(&sync::scope(&config, &account), true, true)?;
+        journal::hold(store, &sync::scope(&config, &account))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn pending_changes(store: State<'_, storage::Store>) -> Result<Vec<serde_json::Value>, String> {
+    let config = config::TestConfig::load()?;
+    let mut rows = Vec::new();
+    for account in change_accounts(&store, &config)? {
+        let mail = store.local_mail(&sync::scope(&config, &account))?;
+        let title = |id: &str| {
+            mail.emails
+                .iter()
+                .find(|e| e["id"] == id)
+                .and_then(|e| e["subject"].as_str())
+                .unwrap_or("Nachricht nicht mehr lokal verfügbar")
+                .to_owned()
+        };
+        for op in &mail.pending {
+            let action = if op.mailbox_ids.is_some() {
+                "Ordner ändern"
+            } else if op.keyword == "$seen" {
+                if op.enabled {
+                    "Als gelesen markieren"
+                } else {
+                    "Als ungelesen markieren"
+                }
+            } else if op.enabled {
+                "Stern hinzufügen"
+            } else {
+                "Stern entfernen"
+            };
+            rows.push(serde_json::json!({"accountId":account,"sequence":op.sequence,"objectId":op.email_id,
+                "kind":"mail","title":title(&op.email_id),"action":action,"requiresReview":op.requires_review,"blocked":op.blocked,"transferable":true}));
+        }
+        for op in &mail.pending_deletes {
+            rows.push(serde_json::json!({"accountId":account,"sequence":op.sequence,"objectId":op.email_id,
+                "kind":"mail","title":"Gelöschter Entwurf","action":"Entwurf löschen","requiresReview":op.requires_review,"blocked":op.blocked,"transferable":true}));
+        }
+        for email in &mail.emails {
+            if email["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("local-draft-"))
+            {
+                rows.push(serde_json::json!({"accountId":account,"objectId":email["id"],"kind":"draft",
+                    "title":email["subject"].as_str().filter(|s| !s.is_empty()).unwrap_or("Ohne Betreff"),
+                    "action":"Lokaler Entwurf · noch nicht zum Versand vorgemerkt","requiresReview":false,"transferable":false}));
+            }
+        }
+    }
+    for account in all_change_accounts(&store, &config)? {
+        for entry in journal::entries(&store, &sync::scope(&config, &account))? {
+            rows.push(serde_json::json!({"accountId":account,"journalId":entry.id,"objectId":entry.object_id,
+                "kind":entry.kind,"title":entry.title,"action":entry.action,"status":entry.status,
+                "requiresReview":entry.status=="held","transferable":true,
+                "blocked":if ["blocked","uncertain"].contains(&entry.status.as_str()){Some(entry.error.unwrap_or("Serverstatus prüfen".into()))}else{None}}));
+        }
+    }
+    Ok(rows)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangeSelection {
+    account_id: String,
+    sequence: Option<u64>,
+    journal_id: Option<u64>,
+}
+
+#[tauri::command]
+fn approve_pending_changes(
+    store: State<'_, storage::Store>,
+    changes: Vec<ChangeSelection>,
+) -> Result<(), String> {
+    let config = config::TestConfig::load()?;
+    if config.read_only {
+        return Err("Nur-Lese-Modus: Übertragung ist gesperrt.".into());
+    }
+    let accounts = all_change_accounts(&store, &config)?;
+    if changes.iter().any(|c| !accounts.contains(&c.account_id)) {
+        return Err("Konto ist nicht verfügbar.".into());
+    }
+    for account in accounts {
+        let sequences: Vec<_> = changes
+            .iter()
+            .filter(|c| c.account_id == account)
+            .filter_map(|c| c.sequence)
+            .collect();
+        store.approve_changes(&sync::scope(&config, &account), &sequences)?;
+        let ids: Vec<_> = changes
+            .iter()
+            .filter(|c| c.account_id == account)
+            .filter_map(|c| c.journal_id)
+            .collect();
+        journal::approve(&store, &sync::scope(&config, &account), &ids)?;
+    }
+    Ok(())
 }
 
 fn report_sync_error(area: &str, operation: &str, error: sync::SyncError) -> String {
@@ -290,7 +458,11 @@ async fn sync_calendar(
         &account_id,
     )
     .await
-    .map_err(|error| error.message())
+    .map_err(|error| error.message())?;
+    if network.enabled() {
+        store.set_change_review(&sync::scope(&config, &account_id), false, false)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -382,7 +554,10 @@ async fn sync_mail(
     let config = config::TestConfig::load()?;
     let connection = sync::Connection::discover(&config, &account_id)
         .await
-        .map_err(|error| report_sync_error("sync", "mail_discovery", error))?;
+        .map_err(|error| {
+            let _ = hold_offline_changes(&store);
+            report_sync_error("sync", "mail_discovery", error)
+        })?;
     sync::synchronize_with_policy(
         &store,
         &connection,
@@ -391,7 +566,19 @@ async fn sync_mail(
         config.read_only,
     )
     .await
-    .map_err(|error| report_sync_error("sync", "mail", error))?;
+    .map_err(|error| {
+        let _ = hold_offline_changes(&store);
+        report_sync_error("sync", "mail", error)
+    })?;
+    if network.enabled() {
+        store.set_change_review(&sync::scope(&config, &account_id), false, false)?;
+    }
+    let synchronized = store.server_emails(&sync::scope(&config, &account_id))?;
+    journal::clear_applied_sends_after_readback(
+        &store,
+        &sync::scope(&config, &account_id),
+        &synchronized,
+    )?;
     // A bounded, best-effort pass must not turn an attachment failure into a mail-sync failure.
     let scope = sync::scope(&config, &account_id);
     let prefetch = async {
@@ -453,59 +640,6 @@ async fn sync_mailboxes(
     )
     .await
     .map_err(|error| report_sync_error("sync", "mailboxes", error))
-}
-
-#[tauri::command]
-async fn composer_request(
-    store: State<'_, storage::Store>,
-    network: State<'_, NetworkMode>,
-    method_calls: Vec<(String, serde_json::Value, String)>,
-) -> Result<serde_json::Value, String> {
-    require_network(&network)?;
-    let config = config::TestConfig::load()?;
-    let response = match sync::composer_request(&store, &config, &method_calls).await {
-        Ok(response) => response,
-        Err(error) => {
-            logging::event(
-                "error",
-                "composer",
-                "request_failed",
-                serde_json::json!({"reason":error.message()}),
-            );
-            return Err(error.message());
-        }
-    };
-    if let Some(rows) = response["methodResponses"].as_array() {
-        for row in rows {
-            let method = row[0].as_str().unwrap_or("unknown");
-            let method_error = row[1]["type"].as_str().or_else(|| {
-                row[1]["notCreated"]
-                    .as_object()
-                    .and_then(|errors| errors.values().next())
-                    .and_then(|item| item["type"].as_str())
-            });
-            if method_error.is_some() {
-                logging::event(
-                    "error",
-                    "composer",
-                    "jmap_method_failed",
-                    serde_json::json!({"method":method,"code":method_error}),
-                );
-            } else if method == "EmailSubmission/set"
-                && row[1]["created"]
-                    .as_object()
-                    .is_some_and(|created| !created.is_empty())
-            {
-                logging::event(
-                    "info",
-                    "composer",
-                    "submission_accepted",
-                    serde_json::json!({}),
-                );
-            }
-        }
-    }
-    Ok(response)
 }
 
 #[tauri::command]
@@ -596,9 +730,18 @@ pub fn run() {
             local_blob,
             sync_blob,
             sync_mailboxes,
-            composer_request,
             read_only_mode,
             write_status,
+            pending_changes,
+            approve_pending_changes,
+            writes::local_identities,
+            writes::sync_identities,
+            writes::queue_submission,
+            writes::edit_queued_send,
+            writes::local_object_set,
+            writes::local_files,
+            writes::sync_files,
+            writes::sync_pending_changes,
             log_frontend_event,
             local_calendar_snapshot,
             sync_calendar,

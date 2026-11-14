@@ -58,8 +58,15 @@ export async function answerCalendar(methodCalls: OfflineMethodCall[], defaultAc
         if (!earlier || reference.path !== '/ids') throw new Error('invalidResultReference');
         args[key.slice(1)] = earlier.ids; delete args[key];
       }
-      if (method.endsWith('/set') || method.endsWith('/parse')) throw new Error('forbidden');
       const account = String(args.accountId || defaultAccount);
+      if (method === 'CalendarEvent/set' && !readOnly) {
+        const result = await invoke<Record<string, any>>('local_object_set', { method, args: { ...args, accountId: account } });
+        snapshots.delete(account);
+        prior.set(`${id}:${method}`, result); responses.push([method, result, id]);
+        window.dispatchEvent(new Event('desktop-write-queued'));
+        continue;
+      }
+      if (method.endsWith('/set') || method.endsWith('/parse')) throw new Error('forbidden');
       if (!snapshots.has(account)) snapshots.set(account, await invoke<Snapshot>('local_calendar_snapshot', { accountId: account }));
       const snapshot = snapshots.get(account)!;
       if (snapshot.accessDenied) throw new Error('accountNotSupportedByMethod');

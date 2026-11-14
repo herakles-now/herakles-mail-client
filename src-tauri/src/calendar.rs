@@ -80,19 +80,27 @@ pub struct Snapshot {
 }
 
 pub fn read(store: &Store, scope: &str) -> Result<Snapshot, String> {
+    let mut snapshot = read_remote(store, scope)?;
+    if !snapshot.access_denied {
+        crate::journal::overlay(store, scope, "calendar", &mut snapshot.events)?;
+    }
+    Ok(snapshot)
+}
+pub fn read_remote(store: &Store, scope: &str) -> Result<Snapshot, String> {
     if store.get(&format!("calendar-denied:{scope}"))?.as_deref() == Some("true") {
         return Ok(Snapshot {
             access_denied: true,
             ..Snapshot::default()
         });
     }
-    store
+    let snapshot: Snapshot = store
         .get(&format!("calendar:{scope}"))?
         .map(|raw| {
-            serde_json::from_str(&raw).map_err(|_| "Lokale Kalenderdaten sind ungültig.".into())
+            serde_json::from_str(&raw).map_err(|_| "Lokale Kalenderdaten sind ungültig.".to_owned())
         })
         .transpose()
-        .map(|v| v.unwrap_or_default())
+        .map(|v| v.unwrap_or_default())?;
+    Ok(snapshot)
 }
 fn text(value: &Value, field: &str) -> Result<String, SyncError> {
     value[field]
@@ -216,7 +224,7 @@ pub async fn synchronize(
     scope: &str,
     account: &str,
 ) -> Result<(), SyncError> {
-    let mut snapshot = read(store, scope)?;
+    let mut snapshot = read_remote(store, scope)?;
     let calendars = match remote
         .call(
             "Calendar/get",
@@ -321,6 +329,7 @@ pub async fn synchronize(
         &serde_json::to_string(&snapshot).map_err(|_| SyncError::Protocol)?,
     )?;
     store.put(&format!("calendar-denied:{scope}"), "false")?;
+    crate::journal::clear_applied(store, scope, "calendar")?;
     Ok(())
 }
 

@@ -8,7 +8,7 @@ Herakles Mail is an offline-first, cross-platform JMAP desktop client built with
 
 The React interface reads and writes through Tauri commands. Rust owns credentials, the local redb database, and JMAP network access. Mail and calendar data are cached locally for offline use; synchronization with Stalwart is explicit application code. Credentials are stored in the operating system keyring. Profile metadata and cached data are stored locally in redb.
 
-Profiles are separate workspaces and can contain multiple accounts. Mail and calendar data are scoped by account. The app includes Bulwark's mail, settings, calendar, contacts, files, and plug-in interfaces, but not all of their server adapters are complete. Mail flag changes have a durable sync queue; calendar access is currently read-only. Composer, draft, send, contacts, files, and full plug-in compatibility remain under development. See [architecture notes](docs/architecture.md) and [add-on limitations](docs/addons.md).
+Profiles are separate workspaces and can contain multiple accounts. Mail and calendar data are scoped by account. The app includes Bulwark's original interfaces with desktop adapters; the upstream submodule remains unchanged. Supported mail changes, structured sends, calendar event edits, and file metadata actions use durable native queues. Offline actions remain local until selected for transfer after reconnect; the separate desktop status bar shows and opens them. Binary uploads, new composer attachments, contacts, and full plug-in compatibility remain under development. See [architecture notes](docs/architecture.md) and [add-on limitations](docs/addons.md).
 
 The local redb database is currently unencrypted. Do not treat this development build as a production-secure client.
 
@@ -49,6 +49,15 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 `npm run dev` starts the browser interface; native JMAP, keyring, and redb operations require the Tauri app. `.env.example` documents debug-only test settings. Never commit `.env.local` or real credentials.
 
 `npm ci` installs JavaScript dependencies only. When `npm run tauri dev` starts, the Tauri CLI invokes Cargo to compile the Rust desktop backend and then launches the app. No separate Rust build command is needed for development. Confirm the toolchain with `rustc --version` and `cargo --version`.
+
+## Standalone Windows executable
+
+Run `npm run tauri build -- --no-bundle` to build
+`src-tauri/target/release/herakles-mail.exe`. Launch this executable directly:
+it embeds the frontend and needs neither Node.js nor a Vite server at runtime.
+The release build does not open a console window. Windows WebView2 is required.
+Existing profiles, cached mail, and OS-keyring credentials remain in the same
+application data locations. This produces an unsigned executable, not an installer.
 
 ## Desktop testing without automatic reloads
 

@@ -1,16 +1,18 @@
 import { readDesktopBlob } from './blobs';
+import { answerFiles } from './files';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { flushDesktopStorage } from './storage';
 import { flushBeforeClose } from './close';
 import { JMAPClient } from '@/lib/jmap/client';
-import { OfflineUnavailableError, setOfflineHooks } from '@/lib/jmap/offline-hooks';
+import { setOfflineHooks } from '@/lib/jmap/offline-hooks';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAccountStore } from '@/stores/account-store';
 import { setClientLookup } from '@/stores/client-registry';
 import { usePolicyStore } from '@/stores/policy-store';
 import { useEmailStore } from '@/stores/email-store';
 import { useCalendarStore } from '@/stores/calendar-store';
+import { useIdentityStore } from '@/stores/identity-store';
 import { answerCalendar } from './calendar';
 import { DEFAULT_POLICY } from '@/lib/admin/types';
 import { applyLiteConfig } from '@/lib/lite-config';
@@ -19,16 +21,6 @@ import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY }
 import type { DesktopSession } from './accounts';
 export interface Bootstrap { session: DesktopSession; serverUrl: string; username: string; readOnly: boolean; }
 let currentLogin: { info: Bootstrap; client: JMAPClient; localId: string } | null = null;
-
-async function invokeComposer(methodCalls: import('@/lib/jmap/offline-hooks').OfflineMethodCall[]) {
-  try { return await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('composer_request', { methodCalls }); }
-  catch (reason) {
-    if (typeof reason === 'string' && reason.startsWith('Offline-Modus aktiv:')) {
-      throw new OfflineUnavailableError('Offline: Die Nachricht wurde nicht versendet. Der Entwurf bleibt erhalten.');
-    }
-    throw reason;
-  }
-}
 
 export async function bootstrapBulwark(): Promise<Bootstrap> {
   (globalThis as unknown as { __DESKTOP_PLUGIN_URL__: string }).__DESKTOP_PLUGIN_URL__ = convertFileSrc('index.html', 'bulwark-plugin');
@@ -42,41 +34,41 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
   }
   const info = await invoke<Bootstrap>('desktop_bootstrap');
   const client = JMAPClient.fromOfflineSession(info.serverUrl, info.username, info.session);
+  (globalThis as unknown as { __DESKTOP_QUEUE_SUBMISSION__: (methodCalls: unknown[], draftId?: string, draftAccountId?: string) => Promise<unknown> }).__DESKTOP_QUEUE_SUBMISSION__ = async (methodCalls, draftId, draftAccountId) => {
+    const result = await invoke('queue_submission', { methodCalls, draftId: draftId ?? null, draftAccountId: draftAccountId ?? null });
+    window.dispatchEvent(new Event('desktop-write-queued'));
+    return result;
+  };
   client.supportsSyntheticCalendarIds = async () => false;
   setOfflineHooks({
     skipNetwork: () => true,
     answer: async (requestClient, methodCalls) => {
+      if (methodCalls.every(([method]) => method === 'Identity/get')) {
+        return { methodResponses: await Promise.all(methodCalls.map(async ([method, args, id]) =>
+          [method, await invoke<Record<string, any>>('local_identities', { accountId: args.accountId || requestClient.getAccountId() }), id] as [string, Record<string, any>, string])) };
+      }
+      if (methodCalls.some(([method]) => method.startsWith('FileNode/'))) return answerFiles(methodCalls);
       if (methodCalls.some(([method]) => method.startsWith('Calendar') || method.startsWith('ParticipantIdentity/'))) {
         // Calendar writes are not part of the initial mail-flag writing scope.
-        return answerCalendar(methodCalls, currentLogin?.client.getCalendarsAccountId() || client.getCalendarsAccountId(), true);
+        return answerCalendar(methodCalls, currentLogin?.client.getCalendarsAccountId() || client.getCalendarsAccountId(), currentLogin?.info.readOnly ?? info.readOnly);
       }
-      // Bulwark's composer remains upstream-owned. Only identity lookup and
-      // its explicit JMAP submission batch cross the native authenticated
-      // transport; the renderer never receives credentials or a server URL
-      // with authorization attached.
+      // Submissions are prepared by the original client, then stored by the
+      // desktop boundary. Only the native sync worker can submit them.
       const submissionCleanup = methodCalls.some(([method, args]) => method === 'EmailSubmission/set' && args.destroy && !args.create);
       if (submissionCleanup) {
         const responses: import('@/lib/jmap/offline-hooks').OfflineResponse['methodResponses'] = [];
         for (const call of methodCalls) {
           const response = call[0] === 'EmailSubmission/set'
-            ? await invokeComposer([call])
+            ? { methodResponses: [[call[0], { accountId: call[1].accountId, destroyed: [] }, call[2]]] as import('@/lib/jmap/offline-hooks').OfflineResponse['methodResponses'] }
             : await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap', { accountId: requestClient.getAccountId(), methodCalls: [call] });
           responses.push(...response.methodResponses);
         }
         return { methodResponses: responses };
       }
-      if (methodCalls.some(([method]) => method === 'EmailSubmission/set' || method === 'Identity/get')) {
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-          const response = await invokeComposer(methodCalls);
-          if (methodCalls.some(([method]) => method === 'EmailSubmission/set')) {
-            window.dispatchEvent(new Event('desktop-write-queued'));
-          }
-          return response;
-        }
-        if (methodCalls.some(([method]) => method === 'EmailSubmission/set')) {
-          throw new OfflineUnavailableError('Offline: Die Nachricht wurde nicht versendet. Der Entwurf bleibt erhalten.');
-        }
-      }
+      if (methodCalls.every(([method]) => method === 'EmailSubmission/get' || method === 'EmailSubmission/query')) return {
+        methodResponses: methodCalls.map(([method, args, id]) => [method, { accountId: args.accountId, state: 'local', list: [], ids: [], notFound: args.ids || [] }, id]),
+      };
+      if (methodCalls.some(([method]) => method === 'EmailSubmission/set')) throw new Error('Versandaufträge müssen zuerst lokal gespeichert werden.');
       const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap', { accountId: requestClient.getAccountId(), methodCalls });
       for (const [method, result] of response.methodResponses) if (method === 'Email/set' && (
         Object.keys(result.updated || {}).length || Object.keys(result.created || {}).length || (result.destroyed || []).length
@@ -179,6 +171,10 @@ async function synchronizeOnce() {
     };
     // Fetch every folder tree before downloading entire mailboxes, so shares appear promptly.
     for (const [index, id] of mailAccounts.entries()) { progress(`Ordner ${index + 1}/${mailAccounts.length}`); await attempt('sync_mailboxes', id); }
+    for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:submission')) await attempt('sync_identities', id);
+    if (accountsFor(info.session, 'urn:ietf:params:jmap:submission').length) {
+      await step('local_identities_refresh_failed', async () => { useIdentityStore.getState().setIdentities(await client.getIdentities()); });
+    }
     await useEmailStore.getState().fetchMailboxes(client);
     for (const [index, id] of calendarAccounts.entries()) { progress(`Kalender ${index + 1}/${calendarAccounts.length}`); await attempt('sync_calendar', id); }
     if (calendarAccounts.length) {
@@ -187,6 +183,18 @@ async function synchronizeOnce() {
       if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
     }
     for (const [index, id] of mailAccounts.entries()) { progress(`Nachrichten ${index + 1}/${mailAccounts.length}`); await attempt('sync_mail', id); }
+    for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:filenode')) await attempt('sync_files', id);
+    const writesApplied = await step('pending_changes_failed', () => invoke<boolean>('sync_pending_changes'));
+    // Read back accepted submissions and mutations before refreshing the visible stores.
+    if (writesApplied) {
+      for (const id of calendarAccounts) await attempt('sync_calendar', id);
+      for (const id of mailAccounts) await attempt('sync_mail', id);
+      for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:filenode')) await attempt('sync_files', id);
+      if (calendarAccounts.length) {
+        const range = useCalendarStore.getState().dateRange;
+        if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
+      }
+    }
     progress('Lokale Ansicht');
     await step('local_mailboxes_refresh_failed', () => useEmailStore.getState().fetchMailboxes(client));
     await step('local_emails_refresh_failed', () => useEmailStore.getState().fetchEmails(client));

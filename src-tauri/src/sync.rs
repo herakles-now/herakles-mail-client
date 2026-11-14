@@ -12,7 +12,8 @@ use std::{
 
 const CORE: &str = "urn:ietf:params:jmap:core";
 const MAIL: &str = "urn:ietf:params:jmap:mail";
-const SUBMISSION: &str = "urn:ietf:params:jmap:submission";
+pub const SUBMISSION: &str = "urn:ietf:params:jmap:submission";
+pub const FILES: &str = "urn:ietf:params:jmap:filenode";
 pub const CALENDARS: &str = "urn:ietf:params:jmap:calendars";
 const EMAIL_PROPERTIES: &[&str] = &[
     "id",
@@ -96,9 +97,14 @@ fn authorize_method(read_only: bool, method: &str) -> Result<(), SyncError> {
         "CalendarEvent/query",
         "CalendarEvent/changes",
         "ParticipantIdentity/get",
+        "Identity/get",
+        "FileNode/get",
+        "FileNode/query",
     ]
     .contains(&method);
-    if !allowed_read && (read_only || method != "Email/set") {
+    if !allowed_read
+        && (read_only || !["Email/set", "CalendarEvent/set", "FileNode/set"].contains(&method))
+    {
         return Err(SyncError::Local(
             if read_only {
                 "Nur-Lese-Modus: Serveränderungen sind gesperrt."
@@ -376,6 +382,10 @@ impl Remote for Connection {
         let capability =
             if method.starts_with("Calendar") || method.starts_with("ParticipantIdentity/") {
                 CALENDARS
+            } else if method.starts_with("FileNode/") {
+                FILES
+            } else if method.starts_with("Identity/") {
+                SUBMISSION
             } else {
                 MAIL
             };
@@ -859,6 +869,9 @@ async fn push_keyword(
         Some(ids) => json!({"mailboxIds":ids}),
         None => json!({patch:enabled}),
     };
+    if store.change_requires_review(scope, operation.sequence)? {
+        return Ok(());
+    }
     let response = remote
         .call(
             "Email/set",
@@ -911,11 +924,15 @@ async fn flush_pending_deletes(
 ) -> Result<(), SyncError> {
     let operations = store.local_mail(scope)?.pending_deletes;
     for operation in operations {
-        if operation.blocked.is_some() {
+        if operation.blocked.is_some() || operation.requires_review {
             continue;
         }
         let mut finished = false;
         for _ in 0..3 {
+            if store.change_requires_review(scope, operation.sequence)? {
+                finished = true;
+                break;
+            }
             let state = store
                 .metadata(scope)?
                 .email_state
@@ -1027,7 +1044,7 @@ async fn flush_pending_keywords(
 ) -> Result<(), SyncError> {
     // Snapshot the queue. Edits made while awaiting the server remain for the next pass.
     for operation in store.local_mail(scope)?.pending {
-        if operation.blocked.is_some() {
+        if operation.blocked.is_some() || operation.requires_review {
             continue;
         }
         match push_keyword(store, remote, scope, account, &operation).await {
@@ -1484,12 +1501,9 @@ mod tests {
     #[test]
     fn read_only_transport_allows_only_audited_read_methods() {
         assert!(authorize_method(false, "Email/set").is_ok());
-        for method in [
-            "CalendarEvent/set",
-            "Mailbox/set",
-            "EmailSubmission/set",
-            "Unknown/get",
-        ] {
+        assert!(authorize_method(false, "CalendarEvent/set").is_ok());
+        assert!(authorize_method(false, "FileNode/set").is_ok());
+        for method in ["Mailbox/set", "EmailSubmission/set", "Unknown/get"] {
             assert!(authorize_method(false, method).is_err());
         }
         for method in [
@@ -1538,6 +1552,63 @@ mod tests {
                 .unwrap();
             assert_eq!(store.local_mail("scope").unwrap().pending.len(), 1);
             remote.exhausted();
+        });
+    }
+
+    #[test]
+    fn reconnect_pulls_but_only_transfers_selected_changes_after_approval() {
+        tauri::async_runtime::block_on(async {
+            let (_dir, store) = store();
+            seed(&store);
+            store
+                .apply_remote(
+                    "scope",
+                    Collection::Email,
+                    Some("s1"),
+                    "s1",
+                    &[json!({"id":"draft-held","keywords":{"$draft":true}})],
+                    &[],
+                    false,
+                )
+                .unwrap();
+            store.set_change_review("scope", true, true).unwrap();
+            store.queue_draft_delete("scope", "draft-held").unwrap();
+            store.queue_keyword("scope", "m1", "$seen", true).unwrap();
+            store
+                .queue_keyword("scope", "m1", "$flagged", true)
+                .unwrap();
+            store.set_change_review("scope", false, true).unwrap();
+            let pull = || {
+                vec![
+                    ("Mailbox/get", Ok(get("mb1", vec![]))),
+                    (
+                        "Email/changes",
+                        Ok(changes("s1", "s1", vec![], vec![], false)),
+                    ),
+                ]
+            };
+            let remote = Script::new(pull());
+            synchronize(&store, &remote, "scope", "a").await.unwrap();
+            remote.exhausted();
+            assert_eq!(store.local_mail("scope").unwrap().pending.len(), 2);
+            let sequence = store.local_mail("scope").unwrap().pending[0].sequence;
+            store.approve_changes("scope", &[sequence]).unwrap();
+            let mut script = pull();
+            script.push(("Email/set", Ok(json!({"updated":{"m1":null}}))));
+            script.push((
+                "Email/changes",
+                Ok(changes("s1", "s1", vec![], vec![], false)),
+            ));
+            let remote = Script::new(script);
+            synchronize(&store, &remote, "scope", "a").await.unwrap();
+            remote.exhausted();
+            let remaining = store.local_mail("scope").unwrap().pending;
+            assert_eq!(remaining.len(), 1);
+            assert!(remaining[0].requires_review);
+            assert_eq!(remaining[0].keyword, "$flagged");
+            let deletes = store.local_mail("scope").unwrap().pending_deletes;
+            assert_eq!(deletes.len(), 1);
+            assert!(deletes[0].requires_review);
         });
     }
 

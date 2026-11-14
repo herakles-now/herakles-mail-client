@@ -21,6 +21,7 @@ impl Store {
         let store = Self(database);
         store.initialize_replica()?;
         store.initialize_blobs()?;
+        crate::journal::initialize(&store)?;
         Ok(store)
     }
 

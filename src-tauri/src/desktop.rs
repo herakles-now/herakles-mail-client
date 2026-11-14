@@ -89,7 +89,11 @@ pub async fn desktop_bootstrap(store: State<'_, Store>) -> Result<Value, String>
 
 #[tauri::command]
 pub async fn refresh_desktop_session(store: State<'_, Store>) -> Result<Value, String> {
-    bootstrap_payload(&store, true).await
+    let result = bootstrap_payload(&store, true).await;
+    if result.is_err() {
+        crate::hold_offline_changes(&store)?;
+    }
+    result
 }
 
 async fn bootstrap_payload(store: &Store, refresh: bool) -> Result<Value, String> {

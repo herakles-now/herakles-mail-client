@@ -5,10 +5,12 @@ use serde_json::Value;
 
 use crate::storage::Store;
 
-const REPLICAS: TableDefinition<&str, &str> = TableDefinition::new("replica_metadata_v1");
+pub(crate) const REPLICAS: TableDefinition<&str, &str> =
+    TableDefinition::new("replica_metadata_v1");
 const OBJECTS: TableDefinition<&str, &str> = TableDefinition::new("replica_objects_v1");
 const OUTBOX: TableDefinition<&str, &str> = TableDefinition::new("replica_outbox_v1");
-const DRAFTS: TableDefinition<&str, &str> = TableDefinition::new("replica_local_drafts_v1");
+pub(crate) const DRAFTS: TableDefinition<&str, &str> =
+    TableDefinition::new("replica_local_drafts_v1");
 const DELETE_OUTBOX: TableDefinition<&str, &str> = TableDefinition::new("replica_delete_outbox_v1");
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -32,6 +34,8 @@ pub struct Metadata {
     pub email_state: Option<String>,
     pub mailbox_state: Option<String>,
     pub next_operation: u64,
+    #[serde(default)]
+    pub review_new_changes: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,6 +49,8 @@ pub struct PendingKeyword {
     pub enabled: bool,
     #[serde(default)]
     pub blocked: Option<String>,
+    #[serde(default)]
+    pub requires_review: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -54,6 +60,8 @@ pub struct PendingDelete {
     pub email_id: String,
     #[serde(default)]
     pub blocked: Option<String>,
+    #[serde(default)]
+    pub requires_review: bool,
 }
 
 #[derive(Serialize)]
@@ -89,6 +97,91 @@ fn database_error(_: impl std::fmt::Display) -> String {
 }
 
 impl Store {
+    pub fn change_requires_review(&self, scope: &str, sequence: u64) -> Result<bool, String> {
+        let tx = self.0.begin_read().map_err(database_error)?;
+        let key = operation_key(scope, sequence);
+        for definition in [OUTBOX, DELETE_OUTBOX] {
+            let table = tx.open_table(definition).map_err(database_error)?;
+            if let Some(row) = table.get(key.as_str()).map_err(database_error)? {
+                let value: Value = decode(row.value())?;
+                return Ok(value["requiresReview"] == true);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Persist the offline barrier and hold existing operations on reconnect/startup.
+    pub fn set_change_review(
+        &self,
+        scope: &str,
+        offline: bool,
+        hold_existing: bool,
+    ) -> Result<(), String> {
+        let tx = self.0.begin_write().map_err(database_error)?;
+        {
+            let mut table = tx.open_table(REPLICAS).map_err(database_error)?;
+            let mut meta: Metadata = table
+                .get(scope)
+                .map_err(database_error)?
+                .map(|v| decode(v.value()))
+                .transpose()?
+                .unwrap_or_default();
+            meta.review_new_changes = offline;
+            table
+                .insert(scope, encode(&meta)?.as_str())
+                .map_err(database_error)?;
+        }
+        if hold_existing {
+            for definition in [OUTBOX, DELETE_OUTBOX] {
+                let mut table = tx.open_table(definition).map_err(database_error)?;
+                let start = outbox_prefix(scope);
+                let rows = table
+                    .range(start.as_str()..)
+                    .map_err(database_error)?
+                    .map(|row| {
+                        row.map(|(k, v)| (k.value().to_owned(), v.value().to_owned()))
+                            .map_err(database_error)
+                    })
+                    .take_while(|row| {
+                        row.as_ref()
+                            .map(|(k, _)| k.starts_with(&start))
+                            .unwrap_or(true)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (key, raw) in rows {
+                    let mut value: Value = decode(&raw)?;
+                    value["requiresReview"] = Value::Bool(true);
+                    table
+                        .insert(key.as_str(), encode(&value)?.as_str())
+                        .map_err(database_error)?;
+                }
+            }
+        }
+        tx.commit().map_err(database_error)
+    }
+
+    pub fn approve_changes(&self, scope: &str, sequences: &[u64]) -> Result<(), String> {
+        let tx = self.0.begin_write().map_err(database_error)?;
+        for definition in [OUTBOX, DELETE_OUTBOX] {
+            let mut table = tx.open_table(definition).map_err(database_error)?;
+            for sequence in sequences {
+                let key = operation_key(scope, *sequence);
+                let raw = table
+                    .get(key.as_str())
+                    .map_err(database_error)?
+                    .map(|v| v.value().to_owned());
+                if let Some(raw) = raw {
+                    let mut value: Value = decode(&raw)?;
+                    value["requiresReview"] = Value::Bool(false);
+                    table
+                        .insert(key.as_str(), encode(&value)?.as_str())
+                        .map_err(database_error)?;
+                }
+            }
+        }
+        tx.commit().map_err(database_error)
+    }
+
     pub fn initialize_replica(&self) -> Result<(), String> {
         let tx = self.0.begin_write().map_err(database_error)?;
         tx.open_table(REPLICAS).map_err(database_error)?;
@@ -281,6 +374,14 @@ impl Store {
                 .as_str()
                 .is_some_and(|id| deleted_ids.contains(id))
         });
+        for entry in crate::journal::entries(self, scope)? {
+            if entry.kind == "send" {
+                if let Some(mut email) = entry.local {
+                    email["threadId"] = email["id"].clone();
+                    emails.push(email);
+                }
+            }
+        }
         emails.sort_by(|a, b| b["receivedAt"].as_str().cmp(&a["receivedAt"].as_str()));
         let metadata = tx.open_table(REPLICAS).map_err(database_error)?;
         let meta: Metadata = metadata
@@ -325,6 +426,22 @@ impl Store {
         })
     }
 
+    /// Read the synchronized server baseline without pending-write overlays.
+    pub fn server_emails(&self, scope: &str) -> Result<Vec<Value>, String> {
+        let tx = self.0.begin_read().map_err(database_error)?;
+        let table = tx.open_table(OBJECTS).map_err(database_error)?;
+        let start = prefix(scope, Collection::Email);
+        let mut emails = Vec::new();
+        for row in table.range(start.as_str()..).map_err(database_error)? {
+            let (key, value) = row.map_err(database_error)?;
+            if !key.value().starts_with(&start) {
+                break;
+            }
+            emails.push(decode(value.value())?);
+        }
+        Ok(emails)
+    }
+
     pub fn queue_draft_delete(&self, scope: &str, email_id: &str) -> Result<PendingDelete, String> {
         let tx = self.0.begin_write().map_err(database_error)?;
         let mut operation;
@@ -354,6 +471,7 @@ impl Store {
                 sequence: meta.next_operation,
                 email_id: email_id.into(),
                 blocked: None,
+                requires_review: meta.review_new_changes,
             };
             tx.open_table(DELETE_OUTBOX)
                 .map_err(database_error)?
@@ -558,6 +676,7 @@ impl Store {
                     },
                     enabled: *enabled,
                     blocked: None,
+                    requires_review: meta.review_new_changes,
                 };
                 queue
                     .insert(
@@ -702,6 +821,35 @@ mod tests {
         let local = store.local_mail("a").unwrap();
         assert_eq!(local.emails[0]["mailboxIds"], json!({"inbox":true}));
         assert_eq!(local.pending.len(), 1);
+    }
+
+    #[test]
+    fn offline_review_survives_restart_and_approval_is_scoped_to_exact_operations() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("review.redb");
+        {
+            let store = Store::open(&path).unwrap();
+            seed(&store, "a");
+            seed(&store, "b");
+            store.set_change_review("a", true, true).unwrap();
+            store.set_change_review("b", true, true).unwrap();
+            store.queue_keyword("a", "m1", "$seen", true).unwrap();
+            store.queue_keyword("b", "m1", "$seen", true).unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let first = store.local_mail("a").unwrap().pending[0].sequence;
+        store.set_change_review("a", false, true).unwrap();
+        assert!(store.change_requires_review("a", first).unwrap());
+        store.approve_changes("a", &[first]).unwrap();
+        assert!(!store.change_requires_review("a", first).unwrap());
+        assert!(store.change_requires_review("b", first).unwrap());
+        store.set_change_review("a", true, true).unwrap();
+        store.queue_keyword("a", "m1", "$flagged", true).unwrap();
+        store.approve_changes("a", &[first]).unwrap();
+        let pending = store.local_mail("a").unwrap().pending;
+        assert_eq!(pending.len(), 2);
+        assert!(!pending[0].requires_review);
+        assert!(pending[1].requires_review);
     }
 
     #[test]

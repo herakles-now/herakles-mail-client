@@ -20,6 +20,7 @@ import { ExternalRecipientConfirmHost } from '@/components/email/external-recipi
 import { usePathname } from './navigation';
 import { bootstrapBulwark, synchronizeBulwark } from './bootstrap';
 import { AccountSetup } from './AccountSetup';
+import { PendingChanges } from './PendingChanges';
 import type { Bootstrap } from './bootstrap';
 import '@/app/globals.css';
 import './desktop.css';
@@ -49,7 +50,7 @@ export default function BulwarkApp() {
   const profileMenuRef = useRef<HTMLDetailsElement>(null);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('Lokale Sitzung laden …');
-  const [writes, setWrites] = useState({ pending: 0, blocked: 0, pendingDeletes: 0, blockedDeletes: 0 });
+  const [writes, setWrites] = useState({ pending: 0, blocked: 0, uncertain: 0, pendingDeletes: 0, blockedDeletes: 0 });
   const [offlineMode, setOfflineMode] = useState(false);
   const [connectivity, setConnectivity] = useState<'syncing' | 'online' | 'offline'>('syncing');
   const [syncPhase, setSyncPhase] = useState('Sitzung');
@@ -166,7 +167,7 @@ export default function BulwarkApp() {
       const forcedOffline = preference === 'offline';
       offlineModeRef.current = forcedOffline;
       setOfflineMode(forcedOffline);
-      const enabled = !forcedOffline;
+      const enabled = !forcedOffline && navigator.onLine;
       setConnectivity(enabled && navigator.onLine ? 'syncing' : 'offline');
       await invoke('set_network_enabled', { enabled });
       return bootstrapBulwark();
@@ -204,6 +205,7 @@ export default function BulwarkApp() {
             syncing = false;
             lastFinished = performance.now();
             updateWrites();
+            window.dispatchEvent(new Event('desktop-changes-updated'));
             if (active && !offlineModeRef.current && networkAvailable) {
               if (syncPending) timer = window.setTimeout(() => sync('pending'), 750);
               else armSafety();
@@ -251,7 +253,8 @@ export default function BulwarkApp() {
   return <NextIntlClientProvider locale="de" messages={messages} timeZone="Europe/Belgrade">
     <ThemeProvider><RateLimitToastProvider><TourProvider>
       <footer className="desktop-statusbar" aria-label="Desktop-Status">
-      <div className="desktop-status" role="status" title="Im Test-Schreibmodus sind Gelesen/Ungelesen, Markierungen, Verschieben, Papierkorb und Entwurfsaktionen angebunden.">{info.readOnly ? 'Nur Lesen' : 'Test-Schreibmodus'} · {status}{writes.pending > 0 && ` · ${writes.pending} ausstehend`}{writes.blocked > 0 && ` · ${writes.blocked} abgelehnt`}{writes.pendingDeletes > 0 && ` · ${writes.pendingDeletes} Entwurfslöschung(en) ausstehend`}{writes.blockedDeletes > 0 && ` · ${writes.blockedDeletes} Entwurfslöschung(en) blockiert`}</div>
+      <PendingChanges connectivity={connectivity} readOnly={info.readOnly} />
+      <div className="desktop-status" role="status" title="Offline-Aktionen werden lokal gespeichert. Die Übertragung wird beim Wiederverbinden freigegeben.">{info.readOnly ? 'Nur Lesen' : 'Test-Schreibmodus'} · {status}{writes.pending > 0 && ` · ${writes.pending} ausstehend`}{writes.blocked > 0 && ` · ${writes.blocked} abgelehnt`}{writes.uncertain > 0 && ` · ${writes.uncertain} Serverantwort(en) unklar`}{writes.pendingDeletes > 0 && ` · ${writes.pendingDeletes} Entwurfslöschung(en) ausstehend`}{writes.blockedDeletes > 0 && ` · ${writes.blockedDeletes} Entwurfslöschung(en) blockiert`}</div>
       <details className="desktop-profile-menu" ref={profileMenuRef}>
         <summary>Profile &amp; Konten</summary>
         <div className="desktop-profile-panel">

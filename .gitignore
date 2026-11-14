@@ -9,6 +9,7 @@ dist/
 src-tauri/target/
 .cache/
 *.log
+/Herakles Mail.exe
 
 src-tauri/gen/schemas/
 

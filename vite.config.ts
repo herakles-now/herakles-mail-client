@@ -8,7 +8,33 @@ export default defineConfig(({ mode }) => ({
   server: { watch: { ignored: ['**/src-tauri/target/**'] } },
   plugins: [{
     name: 'bulwark-desktop-sandbox',
+    enforce: 'pre',
     transform(code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/components/calendar/calendar-app.tsx')) {
+        const needle = '  const openEditModal = useCallback((event: CalendarEvent, startInForm = false) =>';
+        if (!code.includes(needle)) throw new Error('Bulwark calendar integration changed upstream');
+        return code.replace(needle, `  useEffect(() => {
+    const open = (event: Event) => { openEditModal((event as CustomEvent<CalendarEvent>).detail, true); };
+    window.addEventListener('desktop-open-calendar-event', open);
+    return () => window.removeEventListener('desktop-open-calendar-event', open);
+  });
+${needle}`);
+      }
+      if (id.replaceAll('\\', '/').endsWith('/lib/jmap/client.ts')) {
+        const needle = '    let response = await this.submissionRequest(methodCalls);';
+        if (code.split(needle).length !== 2) throw new Error('Bulwark send integration changed upstream');
+        return code.replace(needle, `    const desktopResult = await (globalThis as unknown as { __DESKTOP_QUEUE_SUBMISSION__: (calls: JMAPMethodCall[], draftId?: string, draftAccountId?: string) => Promise<unknown> }).__DESKTOP_QUEUE_SUBMISSION__(methodCalls, draftId, options?.draftAccountId);\n    if ((desktopResult as SendEmailResult).queued) return desktopResult as SendEmailResult;\n    let response = desktopResult as JMAPResponse;`);
+      }
+      if (id.replaceAll('\\', '/').endsWith('/components/mail/mail-app.tsx')) {
+        const needle = '  const handleEditDraft = async (email?: Email, source?: DraftSource) => {';
+        if (!code.includes(needle)) throw new Error('Bulwark draft integration changed upstream');
+        return code.replace(needle, `  useEffect(() => {
+    const open = (event: Event) => { void handleEditDraft((event as CustomEvent<Email>).detail); };
+    window.addEventListener('desktop-open-draft', open);
+    return () => window.removeEventListener('desktop-open-draft', open);
+  });
+${needle}`);
+      }
       if (!id.replaceAll('\\', '/').endsWith('/lib/plugin-sandbox/host-bridge.ts')) return;
       const needle = 'withBasePath(this.privileged ? SANDBOX_PRIVILEGED_PATH : SANDBOX_PATH)';
       if (!code.includes(needle)) throw new Error('Bulwark sandbox integration changed upstream');

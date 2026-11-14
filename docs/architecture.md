@@ -1,5 +1,71 @@
 # Architektur: lokale Replik als Arbeitsgrundlage
 
+Stand: 14. November 2026. Die folgenden Abschnitte beschreiben den aktuellen
+Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshistorie.
+
+## Aktueller Überblick
+
+- Die originale Bulwark-Oberfläche bleibt im unveränderten, fixierten Submodul.
+  Desktopadapter und geprüfte Build-Transforms liegen außerhalb davon.
+- UI-Lesezugriffe laufen über native IPC und redb. Zugangsdaten bleiben in Rust
+  und im Systemschlüsselbund; nur die native Synchronisierung spricht mit Stalwart.
+- Mail unterstützt lokale Lesezugriffe, Gelesen-/Sternänderungen, Verschieben,
+  Papierkorb und lokale Entwürfe. Schreibabsichten werden dauerhaft gespeichert.
+- Strukturierter Versand wird vor dem Netzwerkaufruf in redb journalisiert.
+  Online kann der native Versandpfad unmittelbar die echte Serverantwort liefern;
+  offline oder zur Prüfung gehaltene Aufträge liefern ein ausdrückliches
+  queued-Ergebnis und warten auf Freigabe. Unklare Sendungen werden nicht
+  automatisch wiederholt. Entwürfe werden noch nicht mit dem Server synchronisiert.
+- Kalenderereignisse und Dateimetadaten nutzen lokale Überlagerungen und das
+  Schreibjournal. Binär-Uploads, neue Composer-Anhänge, Kontakte und
+  Kalenderverwaltung sind noch nicht portiert.
+- Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
+  offline. Automatische Cachebereinigung fehlt.
+- Offline-Aufträge benötigen beim Wiederverbinden eine Auswahl zur Übertragung.
+  Reine Entwürfe zählen nicht als ausstehende Aktionen. Blockierte und unklare
+  Aufträge werden durch eine pauschale Freigabe nicht erneut versendet.
+- JMAP_READ_ONLY ist standardmäßig aktiv. Die bestehende Live-Schreibfreigabe gilt
+  ausschließlich für Gelesen-/Sternänderungen und den reversiblen Flag-Test.
+  Versand-, Kalender-, Datei- und Verschiebetests benötigen eine eigene Freigabe
+  für echte Serveränderungen.
+
+## Aktuelle Verifikation
+
+Am 14. November 2026 am aktuellen Arbeitsstand ausgeführt:
+
+- `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
+  große Bundles und teilweise zugleich statische und dynamische Imports.
+- `npm run check:native`: erfolgreich.
+- `npm run test:native`: 52 bestanden, sechs Live-Tests regulär ignoriert.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
+- `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
+  fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
+
+Diese Prüfung hat keine echten Mails versendet oder Serverdaten verändert.
+Sie ersetzt keine native Funktionsprüfung auf Linux/macOS und keinen
+Live-Nachweis für Versand, Kalender- oder Dateiänderungen. Das Upstream-Submodul
+steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
+
+## Nächste Arbeit
+
+1. Binär-Uploads und neue Composer-Anhänge über lokale redb-Ablage, native
+   Warteschlange und kontogetrennte Blob-ID-Zuordnung implementieren.
+2. Blockierte und unklare Aktionen gezielt auflösen oder verwerfen können;
+   vollständigen Konflikteditor ergänzen.
+3. Kontakte und noch fehlende lokale JMAP-Methoden portieren.
+4. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
+   unterstützen; Cachebereinigung und Speicherverwaltung ergänzen.
+5. Lokale Daten verschlüsseln, Linux/macOS vollständig prüfen und
+   Installationspakete, Signierung sowie Updates einrichten.
+
+## Entwicklungshistorie
+
+Die nachfolgenden Ausbaustufen dokumentieren die Entwicklung in zeitlicher
+Reihenfolge. Aussagen wie „fehlt noch“, alte Testzahlen und frühere
+Transportgrenzen beziehen sich auf die jeweilige Stufe. Für den heutigen
+Funktionsumfang gelten der aktuelle Überblick und der abschließende Abschnitt
+„Desktop-Schreibjournal und Offline-Freigabe“.
+
 
 
 Herakles Mail passt die Oberfläche und das Add-on-Modell von [Bulwark Webmail](https://github.com/bulwarkmail/webmail) für einen Offline-Desktopclient an. [Stalwart](https://www.stalwart.email/) ist das primäre JMAP-Serverziel und läuft unabhängig vom Client. Projektdanksagungen und Lizenzhinweise stehen im [README](../README.md#acknowledgements) und in der [NOTICE](../NOTICE).
@@ -538,3 +604,68 @@ Arbeitsbereichs. Verbindungsumschalter, Profile und Abgleichstatus liegen darin;
 der Composer und seine Senden-Schaltflaeche enden darueber. Browserpruefungen
 kontrollieren die getrennten Bereiche bei 1440 und 640 Pixeln Fensterbreite
 sowie mit geoeffnetem Composer im Desktoplayout.
+
+## Desktop-Schreibjournal und Offline-Freigabe (aktueller Stand)
+
+Die Offline-Schreiblogik liegt vollstaendig ausserhalb des unveraenderten
+Bulwark-Submoduls: in src/desktop/ und im nativen Rust-Adapter. Die unteren
+Status- und Freigabedialoge gehoeren zur Desktophuelle. Gepruefte Build-Transforms
+verbinden die originalen Composer- und Kalenderaktionen mit den Desktopadaptern;
+es gibt keinen Bulwark-Fork und keine Aenderung am Upstream-Quellbaum.
+
+Eine strukturierte Mail wird vor jedem Versand als fertiger JMAP-Auftrag mit
+stabiler Message-ID in redb gespeichert. Bei gehaltenen Aufträgen erhält die
+originale Oberfläche ein ausdrückliches queued-Ergebnis. Bei freigegebenem
+Online-Versand liefert der native Pfad die echte JMAP-Antwort zurück. Offline nimmt der
+Client Senden ebenso an wie CalendarEvent/create/update/destroy sowie
+FileNode-Umbenennen, Verschieben, Ordneranlegen und Loeschen. Kalender- und
+Dateiabsichten ueberlagern die separate Serverbasis; ein lesender Abgleich
+ueberschreibt sie nicht. Neue lokale Objekte haben stabile lokale IDs. Ihre
+späteren Server-IDs werden kontogetrennt fuer abhaengige Aktionen gespeichert.
+Neue Datei-Inhalte, neue Composer-Anhaenge, rohe S/MIME-Sendungen, Kontakte,
+Kalenderverwaltung und weitere noch nicht portierte Methoden bleiben gesperrt;
+nicht gespeicherte Uploads werden niemals als erfolgreich bestaetigt.
+
+Offline-Auftraege bleiben gehalten. Beim Wiederverbinden oder Neustart mit
+vorhandenen Auftraegen fragt die Desktophuelle, welche Aktionen uebertragen
+werden sollen. Ohne Auswahl bleiben sie lokal; der lesende Hintergrundabgleich
+laeuft weiter. Freigaben gelten fuer konkrete Operationsnummern je Konto.
+Weitere Bearbeitungen erhalten neue Nummern und sind durch eine alte Freigabe
+nicht abgedeckt. Ein erneuter Offline-Wechsel haelt noch nicht abgeschlossene
+Auftraege wieder zur Pruefung zurueck. Bereits begonnene Anfragen koennen dadurch
+nicht rueckgaengig gemacht werden. Reine Entwuerfe bleiben getrennt vom explizit
+vorgemerkten Versand. Das Bearbeiten einer vorgemerkten Mail verschiebt sie in
+einer redb-Transaktion zurueck zu einem lokalen Entwurf und zieht den noch nicht
+gestarteten Versandauftrag zurueck.
+
+Nur der native Synchronisierer uebertraegt freigegebene Auftraege. Identitaeten,
+Nachrichten, Kalender und Dateimetadaten werden von der UI ausschliesslich aus
+redb gelesen. Der native Worker aktualisiert auch die lokalen Identitaeten.
+Der fruehere direkte Composer-IPC-Transport wurde entfernt. Ein Nur-Lese-Modus
+und aktuelle Account-Capabilities werden weiterhin nativ geprueft.
+
+Vor einem moeglicherweise wirksamen Serveraufruf wird der Auftrag dauerhaft
+als laufend markiert. Ein Neustart mit laufendem Auftrag oder eine unklare
+Transportantwort fuehrt zu einem sichtbaren unklaren Status ohne automatischen
+Neuversand. Definitive Ablehnungen bleiben blockiert. Kalender- und Dateiupdates
+verwenden ifInState und ueberschreiben externe Aenderungen bei einem Konflikt
+nicht automatisch. Bestaetigte Operationen werden erst nach einem erfolgreichen
+lesenden Folgeabgleich aus der lokalen Ueberlagerung entfernt. Submission-
+Metadaten bereinigt ebenfalls nur der Worker. Eine angenommene Submission ist
+kein Nachweis fuer die Ablage im Empfaengerpostfach.
+
+Die Statusleiste zaehlt nur ausstehende Aktionen; normale Entwuerfe werden nicht mitgezaehlt. Die Uebersicht
+zeigt Aktion, Objekt, Konto und Status, ermoeglicht die Auswahl zur Freigabe und
+das Oeffnen des zugehoerigen Objekts. Dauerhaft blockierte und unklare Auftraege
+werden nicht durch eine pauschale Freigabe erneut gesendet. Ein allgemeiner
+Konflikteditor, Cachebereinigung und vollstaendige Datei-Inhaltsbearbeitung
+bleiben offen.
+
+Native Tests pruefen Persistenz, Kontotrennung, atomare Entnahme zum Bearbeiten,
+Freigabe einzelner Versionen, lokale Kalenderueberlagerung ohne Veraenderung der
+Serverbasis, Dateiabhaengigkeiten, Rollback ungueltiger Mischpatches und die
+Sperre gegen Wiederholung unklarer Sendungen. Der Browsertest klickt Senden im
+originalen Composer bei simuliertem Offline-Modus, speichert daneben Termin-
+und Dateiaktionen, laedt neu und prueft die getrennte Freigabe beim Reconnect.
+Alle diese Tests verwenden synthetische Daten; es wurden keine echten Mails
+versendet und keine Live-Kalender oder Live-Dateien veraendert.
