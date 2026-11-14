@@ -26,8 +26,9 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
   Reine Entwürfe zählen nicht als ausstehende Aktionen. Blockierte und unklare
   Aufträge werden durch eine pauschale Freigabe nicht erneut versendet.
 - JMAP_READ_ONLY ist standardmäßig aktiv. Die bestehende Live-Schreibfreigabe gilt
-  ausschließlich für Gelesen-/Sternänderungen und den reversiblen Flag-Test.
-  Versand-, Kalender-, Datei- und Verschiebetests benötigen eine eigene Freigabe
+  für Gelesen-/Sternänderungen, den reversiblen Flag-Test und den separat
+  begrenzten Upload fester 1-KiB-Testdaten. Versand-, Kalender-, FileNode- und
+  Verschiebetests benötigen eine eigene Freigabe
   für echte Serveränderungen.
 
 ## Aktuelle Verifikation
@@ -37,7 +38,8 @@ Am 14. November 2026 am aktuellen Arbeitsstand ausgeführt:
 - `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
   große Bundles und teilweise zugleich statische und dynamische Imports.
 - `npm run check:native`: erfolgreich.
-- `npm run test:native`: 60 bestanden, sechs Live-Tests regulär ignoriert.
+- `npm run test:native`: 64 bestanden, sieben Live-Tests regulär ignoriert.
+  Der separat gegatete 1-KiB-Upload-Live-Test wurde zusätzlich erfolgreich ausgeführt.
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
 - `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
   fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
@@ -49,8 +51,8 @@ steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
 
 ## Nächste Arbeit
 
-1. Uploads gegen Stalwart und auf den Zielplattformen prüfen; Datei-Inhaltsersetzungen
-   und Verwaltung verwaister Uploads ergänzen.
+1. Versand mit Anhängen und FileNode-Erstellung separat freigeben und live prüfen;
+   Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.
 2. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
    durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
 3. Kontakte und noch fehlende lokale JMAP-Methoden portieren.
@@ -761,3 +763,60 @@ Abhängigkeiten und persistente unklare Versandbelege. Der Browsertest prüft de
 Vergleich bei 1440 und 640 Pixeln Breite, erneutes Vormerken ohne Transport,
 bestätigtes Verwerfen und Abschließen einer unklaren Sendung ohne Wiederholung.
 Alle Prüfungen verwenden synthetische Daten.
+
+
+## Begrenzter Upload-Live-Test
+
+Am 14. November 2026 wurde `upload_roundtrip::live_upload_blob_roundtrip` nach
+Korrektur der HTTP-Antwortbehandlung erfolgreich gegen Stalwart ausgeführt.
+Er verwendet genau 1024 feste synthetische Bytes pro bewusst gestarteter
+Prüfausführung. Er legt keine Email oder FileNode auf dem Server an und ruft
+keinen Versand auf. Die Calls, die der Test an `uploads::prepare` übergibt,
+sind nur lokale Daten zur Prüfung der Blob-ID-Ersetzung; sie werden niemals an
+einen JMAP-Methodentransport übergeben. Der Rücklesepfad erzwingt Nur-Lese-Betrieb.
+
+Geprüft sind lokale Ablage und Wiederöffnen vor dem Upload, Offline-Sperre,
+Upload mit dauerhafter Blob-ID-Zuordnung, binärer Vergleich des Downloads,
+Downloadcache sowie lokale Lesezugriffe und Kontotrennung nach erneutem
+redb-Öffnen. Die abschließende Offlineprüfung erhält keine Netzwerkschnittstelle.
+Die eigentliche Testdatenbank liegt in einem temporären Verzeichnis.
+
+Der erste Uploadversuch wurde vom Client nicht bestätigt. Die damalige
+Implementierung erwartete ausschließlich HTTP 201. Stalwarts
+[UploadResponse](https://github.com/stalwartlabs/stalwart/blob/main/crates/jmap/src/api/mod.rs)
+verwendet `JsonResponse::new`, dessen
+[Standardstatus HTTP 200](https://github.com/stalwartlabs/stalwart/blob/main/crates/http-proto/src/lib.rs)
+ist. Der Client akzeptiert jetzt HTTP 200 und 201, jeweils nur mit vollständiger
+passender Blob-Antwort. HTTP 202/204, Weiterleitungen und Fehlerstatus bestätigen
+keinen Upload. Ein Regressionstest prüft die Erfolgsstatus, Kontozuordnung,
+Dateigröße, fehlende Felder und Antwortgrößenlimit. Uploadfehler geben höchstens
+Statuscode oder Fehlerklasse aus, niemals Antworttext.
+
+Insgesamt gab es zwei Uploadversuche mit je 1 KiB Testdaten. Der erste bleibt
+unbestätigt; die identifizierte Korrekturprüfung hat Upload, Rücklesen und
+Offline-Neustart vollständig bestätigt. Die dauerhaften Belege
+`.cache/live-upload-roundtrip.json` und
+`.cache/live-upload-roundtrip-http200-fix.json` enthalten nur Status und
+Testumfang. Ein Beleg wird vor dem Netzwerkaufruf mit `create_new` gespeichert
+und sperrt eine Wiederholung derselben Prüfausführung auch nach einem Timeout.
+Es gibt keine automatische Uploadwiederholung. Unreferenzierte Blobs bleiben
+der serverseitigen Aufbewahrung/Bereinigung überlassen; eine sofortige Löschung
+wird nicht zugesagt. Es wurde keine Nachricht versendet und kein vorhandenes
+Serverobjekt geändert. Das ist noch kein Nachweis für den Versand mit Anhängen
+oder für FileNode/create.
+
+Der Test ist standardmäßig ignoriert und verlangt im Prozess
+`JMAP_UPLOAD_TEST=one-blob-1024`. Der bekannte Korrekturlauf wird zusätzlich durch
+`JMAP_UPLOAD_RUN=http200-fix` bezeichnet. Beide Ausführungen besitzen bereits
+Belege und sind dadurch lokal gegen erneutes Hochladen gesperrt. Die dauerhafte
+Kontoeinstellung `read_only` wird nicht verändert.
+
+Für Profilzugänge kann `JMAP_TEST_REGISTRY` explizit auf die App-Datenbank zeigen.
+Der Test kopiert sie unter einem gemeinsam gehaltenen Dateilock in ein temporäres
+Verzeichnis und liest ausschließlich die Profilregistrierung. Eine eventuell
+nötige redb-Wiederherstellung betrifft nur diese Kopie; die Quelldatei bleibt
+bytegleich. Ein aktiver Writer und Quellen über 512 MiB werden abgelehnt.
+Der passende vorhandene Schlüsselbundzugang wird anschließend nur in Rust geladen,
+ohne Migration, Speichern oder Änderung des globalen App-Kontexts. Synthetische
+Tests prüfen die Quellunveränderlichkeit und das Ablehnen geöffneter Datenbanken,
+fehlender Profilauswahl, zusätzlicher Uploads und fehlerhafter Rücklesedaten.

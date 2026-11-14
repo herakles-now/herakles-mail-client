@@ -11,6 +11,8 @@ mod replica;
 mod session;
 mod storage;
 mod sync;
+#[cfg(test)]
+mod upload_roundtrip;
 mod uploads;
 mod writes;
 

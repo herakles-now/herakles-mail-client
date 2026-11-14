@@ -59,6 +59,21 @@ pub struct TestConfig {
 }
 
 impl TestConfig {
+    /// Integration probes may select an existing profile credential without
+    /// migrating legacy configuration or changing the process-wide UI context.
+    #[cfg(test)]
+    pub fn existing_for_test(profile_id: &str, account_id: &str) -> Result<Self, String> {
+        let raw = credential_entry(&slot_for(profile_id, account_id))?
+            .get_password()
+            .map_err(|_| {
+                "Profilzugang ist im nativen Schlüsselspeicher nicht verfügbar.".to_string()
+            })?;
+        let mut config: Self =
+            serde_json::from_str(&raw).map_err(|_| "Profilzugang ist ungültig.".to_string())?;
+        config.url = validate_url(config.url.as_str())?;
+        config.read_only = true;
+        Ok(config)
+    }
     pub fn load() -> Result<Self, String> {
         let context = active_context();
         let slot = context

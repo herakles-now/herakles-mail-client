@@ -49,6 +49,7 @@ pub enum SyncError {
     Protocol,
     ChangedDuringSnapshot,
     Method(String),
+    UploadHttpStatus(u16),
 }
 
 impl From<String> for SyncError {
@@ -65,6 +66,7 @@ impl SyncError {
             Self::ChangedDuringSnapshot => "Serverdaten wurden während des Erstabgleichs geändert. Bitte erneut synchronisieren.".into(),
             Self::Method(kind) if kind == "stateMismatch" => "Serverzustand wurde geändert. Lokale Änderung bleibt für den nächsten Abgleich vorgemerkt.".into(),
             Self::Method(_) => "Server hat einen Abgleich oder eine Änderung abgelehnt. Lokale Änderungen bleiben vorgemerkt.".into(),
+            Self::UploadHttpStatus(status) => format!("Upload wurde mit HTTP {status} beantwortet. Lokale Datei bleibt erhalten."),
         }
     }
 }
@@ -352,6 +354,24 @@ fn uploaded_blob(value: &Value, account: &str, size: usize) -> Result<String, Sy
     Ok(id.into())
 }
 
+fn decode_uploaded_response(
+    status: reqwest::StatusCode,
+    body: &[u8],
+    account: &str,
+    size: usize,
+) -> Result<String, SyncError> {
+    // Stalwart's UploadResponse uses JsonResponse::new (HTTP 200). Other
+    // implementations use 201. Neither 202 nor 204 confirms a usable blob.
+    if ![reqwest::StatusCode::OK, reqwest::StatusCode::CREATED].contains(&status) {
+        return Err(SyncError::UploadHttpStatus(status.as_u16()));
+    }
+    if body.len() > 64 * 1024 {
+        return Err(SyncError::Protocol);
+    }
+    let answer: Value = serde_json::from_slice(body).map_err(|_| SyncError::Protocol)?;
+    uploaded_blob(&answer, account, size)
+}
+
 impl crate::uploads::UploadRemote for Connection {
     async fn upload(
         &self,
@@ -382,8 +402,9 @@ impl crate::uploads::UploadRemote for Connection {
             .send()
             .await
             .map_err(|_| SyncError::Network)?;
-        if response.status() != reqwest::StatusCode::CREATED {
-            return Err(SyncError::Protocol);
+        let status = response.status();
+        if ![reqwest::StatusCode::OK, reqwest::StatusCode::CREATED].contains(&status) {
+            return Err(SyncError::UploadHttpStatus(status.as_u16()));
         }
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| SyncError::Network)? {
@@ -392,8 +413,7 @@ impl crate::uploads::UploadRemote for Connection {
             }
             body.extend_from_slice(&chunk);
         }
-        let answer: Value = serde_json::from_slice(&body).map_err(|_| SyncError::Protocol)?;
-        uploaded_blob(&answer, account, size)
+        decode_uploaded_response(status, &body, account, size)
     }
 }
 
@@ -1181,6 +1201,33 @@ async fn flush_pending_keywords(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn upload_acknowledgements_accept_stalwart_200_and_201_with_a_complete_matching_blob() {
+        use reqwest::StatusCode;
+        let body=serde_json::to_vec(&json!({"accountId":"a","blobId":"test-blob","size":1024,"type":"application/octet-stream"})).unwrap();
+        for status in [StatusCode::OK, StatusCode::CREATED] {
+            assert_eq!(
+                decode_uploaded_response(status, &body, "a", 1024).unwrap(),
+                "test-blob"
+            );
+            assert!(decode_uploaded_response(status, &body, "b", 1024).is_err());
+            assert!(decode_uploaded_response(status, &body, "a", 1023).is_err());
+            assert!(decode_uploaded_response(status, b"{}", "a", 1024).is_err());
+        }
+        for status in [
+            StatusCode::ACCEPTED,
+            StatusCode::NO_CONTENT,
+            StatusCode::FOUND,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ] {
+            assert!(
+                matches!(decode_uploaded_response(status,&body,"a",1024),Err(SyncError::UploadHttpStatus(code)) if code==status.as_u16())
+            );
+        }
+        assert!(decode_uploaded_response(StatusCode::OK, &vec![0; 65537], "a", 1024).is_err());
+    }
     use std::{collections::VecDeque, sync::Mutex};
 
     #[tokio::test]

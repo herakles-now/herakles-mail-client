@@ -42,4 +42,18 @@ Default to `JMAP_READ_ONLY=true`. The user has explicitly authorized `false` in 
 
 The user explicitly authorized leaving read-only mode in this session. Writable testing currently covers only seen/flagged updates through the durable queue. The separately gated live_flag_write_roundtrip test is authorized to change one existing message flag and restore it; all other live tests remain read-only. Never print credentials or authenticated message contents.
 
+The user's go-ahead for the proposed bounded upload testing additionally authorizes
+`live_upload_blob_roundtrip` with `JMAP_UPLOAD_TEST=one-blob-1024`: each deliberately
+initiated test run is limited to one upload of exactly 1024 fixed synthetic bytes
+to the personal primary mail account, followed
+by read-only download and temporary-redb restart/offline checks. Do not create a
+server Email or FileNode, submit mail, change existing objects, or retry the
+upload automatically. A persistent attempt receipt blocks repeating the same run.
+Preserve earlier receipts during diagnosis. The separately identified `http200-fix`
+run verifies the diagnosed HTTP-200 compatibility correction without clearing the
+initial attempt record. This is still only synthetic blob testing, not mail or
+FileNode testing.
+The unreferenced test blob is left to server retention/cleanup. This exception
+does not authorize other live writes or a persistent change to read-only settings.
+
 
