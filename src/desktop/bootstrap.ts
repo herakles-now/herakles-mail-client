@@ -1,4 +1,4 @@
-import { readDesktopBlob } from './blobs';
+import { readDesktopBlob, stageDesktopUpload } from './blobs';
 import { answerFiles } from './files';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -78,7 +78,7 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
       return response;
     },
     record: () => {}, noteNetwork: () => {}, serverGone: async () => true,
-    blob: (_client, blobId, accountId) => readDesktopBlob(accountId, blobId), recordBlob: () => {}, holdUpload: async () => null,
+    blob: (_client, blobId, accountId) => readDesktopBlob(accountId, blobId), recordBlob: () => {}, holdUpload: (_client, file, accountId) => stageDesktopUpload(file, accountId),
   });
   const config = applyLiteConfig({ appName: 'Herakles Mail', jmapServerUrl: info.serverUrl, noThirdPartyTraffic: true });
   const policy = { ...DEFAULT_POLICY, features: { ...DEFAULT_POLICY.features, pluginsEnabled: true, pluginsUploadEnabled: true, requirePluginApproval: false } };

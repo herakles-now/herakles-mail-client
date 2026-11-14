@@ -539,15 +539,46 @@ impl Store {
         self.queue_keywords(scope, email_id, &[(keyword.to_owned(), enabled)])
     }
 
-    /// Save a composer draft durably in redb. Local draft ids are stable across
-    /// restarts and are scoped by account; binary attachments need the separate
-    /// upload/blob adapter and are rejected here instead of being lost silently.
+    /// Save a composer draft with durable, account-scoped local attachments.
     pub fn save_local_draft(&self, scope: &str, mut email: Value) -> Result<String, String> {
-        if email["keywords"]["$draft"] != true
-            || email.get("attachments").is_some()
-            || email.get("bodyStructure").is_some()
-        {
-            return Err("Lokale Entwürfe unterstützen derzeit keine Dateianhänge.".into());
+        if email["keywords"]["$draft"] != true {
+            return Err("Ungültiger Entwurf.".into());
+        }
+        crate::uploads::validate(self, scope, &email)?;
+        fn remote_ids(value: &Value, ids: &mut Vec<String>) {
+            match value {
+                Value::Object(map) => {
+                    for (field, value) in map {
+                        if field == "blobId" {
+                            if let Some(id) = value
+                                .as_str()
+                                .filter(|id| !id.starts_with(crate::uploads::PREFIX))
+                            {
+                                ids.push(id.into());
+                            }
+                        } else if field != "bodyValues" {
+                            remote_ids(value, ids);
+                        }
+                    }
+                }
+                Value::Array(items) => {
+                    for item in items {
+                        remote_ids(item, ids);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut ids = vec![];
+        remote_ids(&email, &mut ids);
+        if !ids.is_empty() {
+            let known = crate::blobs::references(&self.local_mail(scope)?);
+            if ids
+                .iter()
+                .any(|id| !known.iter().any(|reference| &reference.id == id))
+            {
+                return Err("Anhang gehört zu keiner lokal verfügbaren Nachricht.".into());
+            }
         }
         let tx = self.0.begin_write().map_err(database_error)?;
         let id;
@@ -969,7 +1000,7 @@ mod tests {
     }
 
     #[test]
-    fn local_draft_rejects_binary_attachments_instead_of_saving_a_broken_reference() {
+    fn local_draft_rejects_unknown_remote_attachment_references() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(&dir.path().join("drafts.redb")).unwrap();
         let result = store.save_local_draft(

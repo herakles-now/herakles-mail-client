@@ -84,6 +84,9 @@ pub struct Connection {
     password: String,
     read_only: bool,
     download_template: Option<String>,
+    upload_template: Option<String>,
+    max_upload: u64,
+    account: String,
 }
 
 fn authorize_method(read_only: bool, method: &str) -> Result<(), SyncError> {
@@ -282,9 +285,115 @@ impl Connection {
             url,
             username: config.username.clone(),
             password: config.password.clone(),
-            read_only: config.read_only,
+            read_only: config.read_only || session["accounts"][account]["isReadOnly"] == true,
             download_template: session["downloadUrl"].as_str().map(str::to_owned),
+            account: account.into(),
+            upload_template: session["uploadUrl"].as_str().map(str::to_owned),
+            max_upload: session["capabilities"][CORE]["maxSizeUpload"]
+                .as_u64()
+                .unwrap_or(crate::blobs::MAX_BLOB_BYTES as u64),
         })
+    }
+}
+
+fn blob_upload_url(
+    origin: &url::Url,
+    template: &str,
+    account: &str,
+) -> Result<url::Url, SyncError> {
+    if account.is_empty()
+        || [".", ".."].contains(&account)
+        || account.len() > 4096
+        || account.chars().any(char::is_control)
+        || !template.contains("{accountId}")
+    {
+        return Err(SyncError::Protocol);
+    }
+    let mut encoded = String::new();
+    for byte in account.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    let expanded = template.replace("{accountId}", &encoded);
+    if expanded.contains(['{', '}']) {
+        return Err(SyncError::Protocol);
+    }
+    let url = url::Url::parse(&expanded).map_err(|_| SyncError::Protocol)?;
+    if url.scheme() != "https"
+        || url.origin() != origin.origin()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(SyncError::Protocol);
+    }
+    Ok(url)
+}
+
+fn uploaded_blob(value: &Value, account: &str, size: usize) -> Result<String, SyncError> {
+    let id = value["blobId"]
+        .as_str()
+        .filter(|id| {
+            !id.is_empty()
+                && id.len() <= 4096
+                && !id.starts_with(crate::uploads::PREFIX)
+                && !id.chars().any(char::is_control)
+        })
+        .ok_or(SyncError::Protocol)?;
+    if value["accountId"] != account
+        || value["size"].as_u64() != Some(size as u64)
+        || !value["type"].is_string()
+    {
+        return Err(SyncError::Protocol);
+    }
+    Ok(id.into())
+}
+
+impl crate::uploads::UploadRemote for Connection {
+    async fn upload(
+        &self,
+        account: &str,
+        bytes: Vec<u8>,
+        media_type: &str,
+    ) -> Result<String, SyncError> {
+        if self.read_only || self.account != account {
+            return Err(SyncError::Local("Upload für dieses Konto gesperrt.".into()));
+        }
+        if bytes.len() > crate::blobs::MAX_BLOB_BYTES || bytes.len() as u64 > self.max_upload {
+            return Err(SyncError::Local(
+                "Datei überschreitet das Uploadlimit.".into(),
+            ));
+        }
+        let size = bytes.len();
+        let url = blob_upload_url(
+            &self.url,
+            self.upload_template.as_deref().ok_or(SyncError::Protocol)?,
+            account,
+        )?;
+        let mut response = self
+            .client
+            .post(url)
+            .basic_auth(&self.username, Some(&self.password))
+            .header(reqwest::header::CONTENT_TYPE, media_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|_| SyncError::Network)?;
+        if response.status() != reqwest::StatusCode::CREATED {
+            return Err(SyncError::Protocol);
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| SyncError::Network)? {
+            if body.len().saturating_add(chunk.len()) > 64 * 1024 {
+                return Err(SyncError::Protocol);
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let answer: Value = serde_json::from_slice(&body).map_err(|_| SyncError::Protocol)?;
+        uploaded_blob(&answer, account, size)
     }
 }
 
@@ -1074,6 +1183,51 @@ mod tests {
     use super::*;
     use std::{collections::VecDeque, sync::Mutex};
 
+    #[tokio::test]
+    async fn uploads_validate_origin_response_account_size_and_read_only_before_network() {
+        use crate::uploads::UploadRemote;
+        let origin = url::Url::parse("https://mail.example.test/jmap").unwrap();
+        let template = "https://mail.example.test/upload/{accountId}?fixed=1";
+        assert_eq!(
+            blob_upload_url(&origin, template, "a/b?#")
+                .unwrap()
+                .as_str(),
+            "https://mail.example.test/upload/a%2Fb%3F%23?fixed=1"
+        );
+        for bad in [
+            "http://mail.example.test/{accountId}",
+            "https://evil.test/{accountId}",
+            "https://user@mail.example.test/{accountId}",
+            "https://mail.example.test/{accountId}#fragment",
+            "https://mail.example.test/{unknown}",
+        ] {
+            assert!(blob_upload_url(&origin, bad, "a").is_err());
+        }
+        assert!(blob_upload_url(&origin, template, "..").is_err());
+        let answer =
+            json!({"accountId":"a","blobId":"b","size":3,"type":"application/octet-stream"});
+        assert_eq!(uploaded_blob(&answer, "a", 3).unwrap(), "b");
+        assert!(uploaded_blob(&answer, "other", 3).is_err());
+        assert!(uploaded_blob(&answer, "a", 2).is_err());
+        let remote = Connection {
+            client: reqwest::Client::new(),
+            url: origin,
+            username: "unused".into(),
+            password: "unused".into(),
+            read_only: true,
+            download_template: None,
+            upload_template: Some(template.into()),
+            max_upload: 25,
+            account: "a".into(),
+        };
+        assert!(remote.upload("a", vec![1], "text/plain").await.is_err());
+        let remote = Connection {
+            read_only: false,
+            ..remote
+        };
+        assert!(remote.upload("other", vec![1], "text/plain").await.is_err());
+        assert!(remote.upload("a", vec![1; 26], "text/plain").await.is_err());
+    }
     #[test]
     fn submission_cleanup_requires_a_persisted_account_scoped_receipt() {
         let dir = tempfile::tempdir().unwrap();

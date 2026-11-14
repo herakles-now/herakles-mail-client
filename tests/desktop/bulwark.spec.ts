@@ -23,6 +23,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   let eventTitle = 'Offline-Kalendertermin';
   let fileName = 'Offline-Datei.txt';
   const cachedBlobs = new Set<string>();
+  const stagedUploads = new Map<string, { base64: string; mediaType: string }>();
   const attachmentBytes = Buffer.from([0, 128, 255, 65, 10]);
   const calls: string[] = [];
   const errors: string[] = [];
@@ -44,7 +45,14 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
       myRights: { mayReadItems: true, mayAddItems: false, mayRemoveItems: false, maySetSeen: false,
         maySetKeywords: false, mayCreateChild: false, mayRename: false, mayDelete: false, maySubmit: false } };
     switch (command) {
-      case 'local_blob': return cachedBlobs.has(JSON.stringify([args.accountId, args.blobId])) ? { base64: attachmentBytes.toString('base64'), mediaType: 'application/octet-stream' } : null;
+      case 'stage_upload': {
+        if (!writable || args.accountId !== 'account') throw 'forbidden';
+        const blobId = `local-upload-${stagedUploads.size + 1}`;
+        stagedUploads.set(JSON.stringify([args.accountId, blobId]), { base64: args.base64, mediaType: args.mediaType });
+        return { blobId, size: Buffer.from(args.base64, 'base64').length, type: args.mediaType };
+      }
+      case 'local_blob': if (stagedUploads.has(JSON.stringify([args.accountId, args.blobId]))) return stagedUploads.get(JSON.stringify([args.accountId, args.blobId]));
+        return cachedBlobs.has(JSON.stringify([args.accountId, args.blobId])) ? { base64: attachmentBytes.toString('base64'), mediaType: 'application/octet-stream' } : null;
       case 'sync_blob':
         if (!serverAvailable) throw new Error('Server offline');
         if (args.blobId !== 'attachment-1') throw new Error('Unknown fixture blob');
@@ -110,7 +118,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
           sharesDiscovered = true;
         }
         const info: any = { serverUrl: 'https://mail.example.test', username: 'reader@example.test', readOnly: !writable,
-        session: { username: 'reader@example.test', state: 'fixture', apiUrl: 'https://mail.example.test/jmap',
+        session: { username: 'reader@example.test', state: 'fixture', apiUrl: 'https://mail.example.test/jmap', uploadUrl: 'https://mail.example.test/upload/{accountId}',
           capabilities: { 'urn:ietf:params:jmap:core': { maxObjectsInGet: 500, maxCallsInRequest: 16 }, 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {} },
           accounts: { account: { name: 'Desktop Test', isPersonal: true, isReadOnly: !writable, accountCapabilities: { 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {} } } },
           primaryAccounts: { 'urn:ietf:params:jmap:mail': 'account', 'urn:ietf:params:jmap:calendars': 'account', 'urn:ietf:params:jmap:submission': 'account', 'urn:ietf:params:jmap:filenode': 'account' } } };
@@ -357,10 +365,20 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     await page.evaluate(() => window.dispatchEvent(new Event('offline')));
     await page.getByTitle('Antworten', { exact: true }).first().click();
     await page.locator('[contenteditable="true"]:visible').last().fill('Dauerhaft gespeicherter Offline-Versandtest.');
+    await page.locator('input[type="file"]').last().setInputFiles({ name: 'lokaler-anhang.bin', mimeType: 'application/octet-stream', buffer: attachmentBytes });
+    await expect.poll(() => stagedUploads.size).toBe(1);
+    await expect(page.getByText('lokaler-anhang.bin', { exact: true }).last()).toBeVisible();
     await page.locator('[data-testid="composer-send"]:visible').first().click();
     await expect.poll(() => [...journalWrites.values()].filter((row) => row.kind === 'send').length).toBe(1);
     expect(calls.filter((call) => call === 'transport:send')).toHaveLength(0);
-    expect([...journalWrites.values()].find((row) => row.kind === 'send').methodCalls[0][1].create).toBeTruthy();
+    const queuedMail = [...journalWrites.values()].find((row) => row.kind === 'send').methodCalls[0][1].create;
+    expect(JSON.stringify(queuedMail)).toContain('local-upload-1');
+    expect(Buffer.from([...stagedUploads.values()][0].base64, 'base64')).toEqual(attachmentBytes);
+    const stagedRead = await page.evaluate(async () => {
+      const blob = await (globalThis as any).__bulwarkOfflineHooks.blob({}, 'local-upload-1', 'account');
+      return [...new Uint8Array(await blob.arrayBuffer())];
+    });
+    expect(stagedRead).toEqual([...attachmentBytes]);
     // Calendar and file writes use the same desktop journal, without a server call.
     await page.evaluate(async () => {
       const hooks = (globalThis as any).__bulwarkOfflineHooks;

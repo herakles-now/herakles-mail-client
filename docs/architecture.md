@@ -17,8 +17,9 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
   queued-Ergebnis und warten auf Freigabe. Unklare Sendungen werden nicht
   automatisch wiederholt. Entwürfe werden noch nicht mit dem Server synchronisiert.
 - Kalenderereignisse und Dateimetadaten nutzen lokale Überlagerungen und das
-  Schreibjournal. Binär-Uploads, neue Composer-Anhänge, Kontakte und
-  Kalenderverwaltung sind noch nicht portiert.
+  Schreibjournal. Neue Datei-Uploads und Composer-Anhänge werden ebenfalls
+  lokal gehalten und als Abhängigkeiten freigegebener Aufträge hochgeladen.
+  Datei-Inhaltsersetzungen, Kontakte und Kalenderverwaltung fehlen noch.
 - Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
   offline. Automatische Cachebereinigung fehlt.
 - Offline-Aufträge benötigen beim Wiederverbinden eine Auswahl zur Übertragung.
@@ -36,7 +37,7 @@ Am 14. November 2026 am aktuellen Arbeitsstand ausgeführt:
 - `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
   große Bundles und teilweise zugleich statische und dynamische Imports.
 - `npm run check:native`: erfolgreich.
-- `npm run test:native`: 52 bestanden, sechs Live-Tests regulär ignoriert.
+- `npm run test:native`: 56 bestanden, sechs Live-Tests regulär ignoriert.
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
 - `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
   fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
@@ -48,8 +49,8 @@ steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
 
 ## Nächste Arbeit
 
-1. Binär-Uploads und neue Composer-Anhänge über lokale redb-Ablage, native
-   Warteschlange und kontogetrennte Blob-ID-Zuordnung implementieren.
+1. Uploads gegen Stalwart und auf den Zielplattformen prüfen; Datei-Inhaltsersetzungen
+   und Verwaltung verwaister Uploads ergänzen.
 2. Blockierte und unklare Aktionen gezielt auflösen oder verwerfen können;
    vollständigen Konflikteditor ergänzen.
 3. Kontakte und noch fehlende lokale JMAP-Methoden portieren.
@@ -669,3 +670,46 @@ originalen Composer bei simuliertem Offline-Modus, speichert daneben Termin-
 und Dateiaktionen, laedt neu und prueft die getrennte Freigabe beim Reconnect.
 Alle diese Tests verwenden synthetische Daten; es wurden keine echten Mails
 versendet und keine Live-Kalender oder Live-Dateien veraendert.
+
+
+## Lokale Uploads und Composer-Anhänge
+
+`src-tauri/src/uploads.rs` hält Datei-Bytes und Metadaten atomar in eigenen
+redb-Tabellen. Die Ablage ist wie die Mailreplik nach Profil, Server, Login und
+JMAP-Konto getrennt. Lokale Blob-IDs bleiben über Neustarts stabil. Die originale
+Bulwark-Schnittstelle `holdUpload` speichert Dateien per IPC; sie führt keinen
+Browser-Upload aus. Entwürfe und Versandaufträge können diese lokalen IDs auch
+in verschachtelten MIME-Strukturen verwenden. Fehlende oder kontofremde lokale
+Referenzen werden vor dem Speichern abgelehnt.
+
+Grenzen: 25 MiB pro Datei und 256 MiB Uploadablage pro Konto, zusätzlich zum
+bestehenden Downloadcache. Auch leere Dateien werden unterstützt. Automatische
+Bereinigung verwaister Uploads, vollständige Cacheverwaltung und Ersetzen
+bestehender Datei-Inhalte sind noch offen. Lokal entfernte Anhänge geben daher
+noch keinen Speicher frei.
+
+Nur der native Schreibpfad überträgt Dateien, und nur als Abhängigkeit eines
+freigegebenen Versand- oder FileNode/create-Auftrags. Die Binärübertragung folgt
+[RFC 8620 Abschnitt 6.1](https://www.rfc-editor.org/rfc/rfc8620.html#section-6.1).
+Der Transport prüft aktuelle Kontounterstützung, Schreibschutz, HTTPS-Herkunft,
+Serverlimit und die Uploadantwort einschließlich Konto, Größe und Blob-ID.
+Umleitungen werden nicht verfolgt; Antworten und Inhalte werden nicht geloggt.
+
+Blob-ID-Zuordnungen werden dauerhaft pro Konto gespeichert. Eine aktuelle
+Zuordnung wird kurz wiederverwendet, nach fünf Minuten werden die lokalen Bytes
+neu übertragen, damit abgelaufene unreferenzierte Serverblobs nicht dauerhaft
+verwendet werden. Nur Blob-ID-Felder werden im abgeleiteten Serverauftrag ersetzt;
+der lokale Entwurf und Nachrichtentext bleiben unverändert. Die letzte Zuordnung
+kann nach einer lesenden Synchronisierung auch lokale Datei- und Anhangszugriffe
+unter der Server-ID beantworten, solange das Objekt weiterhin lesbar referenziert
+ist. Uploadfehler halten den Auftrag zur erneuten Prüfung zurück. Erst nach
+Uploadvorbereitung wird ein Versand als laufend markiert. Unklare Antworten nach
+dem eigentlichen Versand bleiben weiterhin ohne automatischen Neuversand.
+
+Verifikation: Native Tests prüfen binäre Persistenz, Kontotrennung, lokale Entwürfe
+mit Anhängen, doppelte MIME-Referenzen, persistente Zuordnungen, Uploadfehler,
+Offline-Sperren, Dateierstellung im Journal und Transportgrenzen. Der Browsertest
+fügt über den originalen Composer eine Binärdatei an, liest sie offline bytegenau,
+merkt die Mail offline vor und prüft Wiederladen und gezielte spätere Freigabe.
+Diese Prüfungen verwenden synthetische Daten; echte Uploads, Versand mit Anhängen
+und neue Serverdateien wurden nicht ausgeführt.

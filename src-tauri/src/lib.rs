@@ -10,6 +10,7 @@ mod replica;
 mod session;
 mod storage;
 mod sync;
+mod uploads;
 mod writes;
 
 use session::SessionSummary;
@@ -496,17 +497,72 @@ fn queue_keyword(
     )
 }
 
+fn blob_reference(
+    store: &storage::Store,
+    config: &config::TestConfig,
+    account: &str,
+    blob: &str,
+) -> Result<(blobs::BlobRef, &'static str), String> {
+    let scope = sync::scope(config, account);
+    if desktop::require_capability(store, config, account, "urn:ietf:params:jmap:mail").is_ok() {
+        if let Some(reference) = blobs::references(&store.local_mail(&scope)?)
+            .into_iter()
+            .find(|r| r.id == blob)
+        {
+            return Ok((reference, "urn:ietf:params:jmap:mail"));
+        }
+    }
+    if desktop::require_capability(store, config, account, sync::FILES).is_ok() {
+        if let Some(file) = writes::files(store, &scope)?["list"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|file| file["blobId"] == blob && file["myRights"]["mayRead"] != false)
+        {
+            return Ok((
+                blobs::BlobRef {
+                    id: blob.into(),
+                    media_type: file["type"]
+                        .as_str()
+                        .unwrap_or("application/octet-stream")
+                        .into(),
+                    size: file["size"].as_u64(),
+                    attachment: true,
+                },
+                sync::FILES,
+            ));
+        }
+    }
+    Err("Datei gehört zu keinem lokal verfügbaren Objekt mit Leserecht.".into())
+}
 #[tauri::command]
 fn local_blob(
     store: State<'_, storage::Store>,
     account_id: String,
     blob_id: String,
 ) -> Result<Option<blobs::CachedBlob>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
     let config = config::TestConfig::load()?;
-    desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")?;
-    store.cached_blob(&sync::scope(&config, &account_id), &blob_id)
+    let scope = sync::scope(&config, &account_id);
+    if blob_id.starts_with(uploads::PREFIX) {
+        desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")
+            .or_else(|_| desktop::require_capability(&store, &config, &account_id, sync::FILES))?;
+        return uploads::cached(&store, &scope, &blob_id).map(Some);
+    }
+    let (reference, capability) = blob_reference(&store, &config, &account_id, &blob_id)?;
+    if capability == "urn:ietf:params:jmap:mail" {
+        if let Some(cached) = store.cached_blob(&scope, &blob_id)? {
+            return Ok(Some(cached));
+        }
+    }
+    if let Some(bytes) = store.blob_bytes(&scope, &blob_id)? {
+        return Ok(Some(blobs::CachedBlob {
+            base64: STANDARD.encode(bytes),
+            media_type: reference.media_type,
+        }));
+    }
+    uploads::cached_remote(&store, &scope, &blob_id)
 }
-
 #[tauri::command]
 async fn sync_blob(
     store: State<'_, storage::Store>,
@@ -519,22 +575,18 @@ async fn sync_blob(
     let _guard = gate.0.lock().await;
     require_network(&network)?;
     let config = config::TestConfig::load()?;
-    desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")?;
     let scope = sync::scope(&config, &account_id);
-    let reference = blobs::references(&store.local_mail(&scope)?)
-        .into_iter()
-        .find(|item| item.id == blob_id)
-        .ok_or("Anhang gehoert zu keiner lokal verfuegbaren Nachricht.")?;
+    let (reference, capability) = blob_reference(&store, &config, &account_id, &blob_id)?;
     if store.blob_bytes(&scope, &blob_id)?.is_some() {
         return Ok(());
     }
-    let connection = sync::Connection::discover(&config, &account_id)
+    let connection = sync::Connection::discover_for(&config, &account_id, capability)
         .await
-        .map_err(|error| error.message())?;
+        .map_err(|e| e.message())?;
     let bytes = connection
         .download_blob(&account_id, &reference)
         .await
-        .map_err(|error| error.message())?;
+        .map_err(|e| e.message())?;
     require_network(&network)?;
     store.cache_blob(&scope, &blob_id, &bytes)
 }
@@ -734,6 +786,7 @@ pub fn run() {
             write_status,
             pending_changes,
             approve_pending_changes,
+            writes::stage_upload,
             writes::local_identities,
             writes::sync_identities,
             writes::queue_submission,

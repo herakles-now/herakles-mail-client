@@ -33,6 +33,30 @@ fn writable(
     Ok(())
 }
 #[tauri::command]
+pub fn stage_upload(
+    store: State<'_, Store>,
+    account_id: String,
+    base64: String,
+    media_type: String,
+) -> Result<crate::uploads::Upload, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let config = TestConfig::load()?;
+    writable(&store, &config, &account_id, "urn:ietf:params:jmap:mail")
+        .or_else(|_| writable(&store, &config, &account_id, sync::FILES))?;
+    if base64.len() > crate::blobs::MAX_BLOB_BYTES.div_ceil(3) * 4 {
+        return Err("Datei überschreitet das Uploadlimit von 25 MiB.".into());
+    }
+    let bytes = STANDARD
+        .decode(base64)
+        .map_err(|_| "Ungültige Dateidaten.")?;
+    crate::uploads::stage(
+        &store,
+        &sync::scope(&config, &account_id),
+        &bytes,
+        &media_type,
+    )
+}
+#[tauri::command]
 pub fn edit_queued_send(
     store: State<'_, Store>,
     account_id: String,
@@ -144,6 +168,9 @@ pub async fn queue_submission(
         )?;
     }
     let scope = sync::scope(&config, &account);
+    for (_, args, _) in &method_calls {
+        crate::uploads::validate(&store, &scope, args)?;
+    }
     let online_at_start = network.enabled();
     let source_account = draft_account_id.as_deref().unwrap_or(&account);
     if draft_id.is_some() {
@@ -179,14 +206,40 @@ pub async fn queue_submission(
             journal::hold(&store, &scope)?;
             return Ok(json!({"scheduled":false,"queued":true,"outboxId":id}));
         }
+        // Upload dependencies before claiming the send. Failed uploads cannot
+        // leave a possibly submitted mail; retain the durable held operation.
+        let queued_calls = journal::entries(&store, &scope)?
+            .into_iter()
+            .find(|e| e.id == id)
+            .ok_or("Versandauftrag fehlt.")?
+            .calls;
+        let prepared = async {
+            let remote =
+                sync::Connection::discover_for(&config, &account, "urn:ietf:params:jmap:mail")
+                    .await
+                    .map_err(|e| e.message())?;
+            crate::uploads::prepare(&store, &scope, &account, &queued_calls, &remote, || {
+                network.enabled()
+            })
+            .await
+        }
+        .await;
+        let calls = match prepared {
+            Ok(calls) => calls,
+            Err(_) => {
+                journal::finish(
+                    &store,
+                    &scope,
+                    id,
+                    Some("held"),
+                    Some("Vorbereitung fehlgeschlagen; Anhänge und Verbindung prüfen."),
+                )?;
+                return Ok(json!({"scheduled":false,"queued":true,"outboxId":id}));
+            }
+        };
         if !journal::claim(&store, &scope, id)? {
             return Err("Der Versandauftrag konnte nicht sicher übernommen werden.".into());
         }
-        let calls = journal::entries(&store, &scope)?
-            .into_iter()
-            .find(|entry| entry.id == id)
-            .ok_or("Versandauftrag nicht gefunden.")?
-            .calls;
         match sync::composer_request(&store, &config, &calls).await {
             Ok(answer) => {
                 let rows = answer["methodResponses"].as_array();
@@ -284,9 +337,18 @@ pub fn local_object_set(
     args: Value,
 ) -> Result<Value, String> {
     let config = TestConfig::load()?;
+    local_object_set_inner(&store, &config, network.enabled(), method, args)
+}
+fn local_object_set_inner(
+    store: &Store,
+    config: &TestConfig,
+    network_enabled: bool,
+    method: String,
+    args: Value,
+) -> Result<Value, String> {
     let account = args["accountId"].as_str().ok_or("accountNotFound")?;
-    let scope = sync::scope(&config, account);
-    let hold = !network.enabled() || store.metadata(&scope)?.review_new_changes;
+    let scope = sync::scope(config, account);
+    let hold = !network_enabled || store.metadata(&scope)?.review_new_changes;
     match method.as_str() {
         "CalendarEvent/set" => {
             writable(&store, &config, account, sync::CALENDARS)?;
@@ -407,11 +469,15 @@ pub fn local_object_set(
                 .into_iter()
                 .flat_map(|m| m.values())
             {
-                if file.get("blobId").is_some_and(|v| !v.is_null())
-                    || file["@type"].as_str().is_some_and(|s| s != "Directory")
+                if let Some(blob) = file.get("blobId").filter(|v| !v.is_null()) {
+                    blob.as_str()
+                        .filter(|id| id.starts_with(crate::uploads::PREFIX))
+                        .ok_or("Nur lokal gespeicherte Datei-Uploads werden unterstützt.")?;
+                    crate::uploads::validate(&store, &scope, file)?;
+                } else if file["@type"].as_str().is_some_and(|s| s != "Directory")
                     || file["nodeType"].as_str().is_some_and(|s| s != "directory")
                 {
-                    return Err("Neue Datei-Inhalte benötigen noch den Uploadadapter.".into());
+                    return Err("Datei-Inhalt fehlt.".into());
                 }
                 check_parent(&file["parentId"])?;
             }
@@ -618,6 +684,33 @@ pub async fn sync_pending_changes(
                         }
                     }
                 }
+                let prepared = async {
+                    let remote = sync::Connection::discover_for(
+                        &config,
+                        &account,
+                        "urn:ietf:params:jmap:mail",
+                    )
+                    .await
+                    .map_err(|e| e.message())?;
+                    crate::uploads::prepare(&store, &scope, &account, &calls, &remote, || {
+                        network.enabled()
+                    })
+                    .await
+                }
+                .await;
+                calls = match prepared {
+                    Ok(calls) => calls,
+                    Err(_) => {
+                        journal::finish(
+                            &store,
+                            &scope,
+                            entry.id,
+                            Some("held"),
+                            Some("Upload fehlgeschlagen; Auftrag bleibt lokal."),
+                        )?;
+                        continue;
+                    }
+                };
                 // Claim is durable BEFORE any potentially side-effecting network request.
                 if !journal::claim(&store, &scope, entry.id)? {
                     continue;
@@ -762,6 +855,28 @@ pub async fn sync_pending_changes(
                         continue;
                     }
                 };
+                let resolved = match crate::uploads::prepare(
+                    &store,
+                    &scope,
+                    &account,
+                    &resolved,
+                    &remote,
+                    || network.enabled(),
+                )
+                .await
+                {
+                    Ok(calls) => calls,
+                    Err(_) => {
+                        journal::finish(
+                            &store,
+                            &scope,
+                            entry.id,
+                            Some("held"),
+                            Some("Upload fehlgeschlagen; Auftrag bleibt lokal."),
+                        )?;
+                        continue;
+                    }
+                };
                 let (method, mut args, _) = resolved[0].clone();
                 if let Some(state) = &entry.base_state {
                     args["ifInState"] = json!(state);
@@ -848,6 +963,95 @@ pub async fn sync_pending_changes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("files.redb");
+        let config = TestConfig {
+            url: url::Url::parse("https://mail.example.test/jmap").unwrap(),
+            username: "synthetic".into(),
+            password: String::new(),
+            read_only: false,
+        };
+        let scope = sync::scope(&config, "files");
+        let object;
+        {
+            let store = Store::open(&path).unwrap();
+            store.put(&format!("{}:desktop-session",config.cache_key()), &json!({"accounts":{"files":{"accountCapabilities":{sync::FILES:{}},"isReadOnly":false}}}).to_string()).unwrap();
+            store
+                .put(
+                    &format!("files:{scope}"),
+                    &json!({"state":"f1","list":[]}).to_string(),
+                )
+                .unwrap();
+            let foreign = crate::uploads::stage(&store, "other", &[1], "text/plain").unwrap();
+            let args = |id: &str| json!({"accountId":"files","create":{"one":{"name":"test.txt","type":"text/plain","blobId":id}}});
+            assert!(local_object_set_inner(
+                &store,
+                &config,
+                false,
+                "FileNode/set".into(),
+                args(&foreign.blob_id)
+            )
+            .is_err());
+            assert!(local_object_set_inner(
+                &store,
+                &config,
+                false,
+                "FileNode/set".into(),
+                args("local-upload-missing")
+            )
+            .is_err());
+            assert!(journal::entries(&store, &scope).unwrap().is_empty());
+            let upload =
+                crate::uploads::stage(&store, &scope, &[0, 128, 255], "text/plain").unwrap();
+            let result = local_object_set_inner(
+                &store,
+                &config,
+                false,
+                "FileNode/set".into(),
+                args(&upload.blob_id),
+            )
+            .unwrap();
+            object = result["created"]["one"]["id"].as_str().unwrap().to_owned();
+            assert_eq!(
+                files(&store, &scope).unwrap()["list"][0]["parentId"],
+                Value::Null
+            );
+            assert_eq!(files(&store, &scope).unwrap()["list"][0]["size"], 3);
+            local_object_set_inner(
+                &store,
+                &config,
+                false,
+                "FileNode/set".into(),
+                json!({"accountId":"files","update":{object.clone():{"name":"renamed.txt"}}}),
+            )
+            .unwrap();
+            let entry = journal::entries(&store, &scope).unwrap().remove(0);
+            assert_eq!(entry.status, "held");
+            assert_eq!(entry.calls[0].1["create"]["one"]["blobId"], upload.blob_id);
+            assert_eq!(entry.calls[0].1["create"]["one"]["name"], "renamed.txt");
+            assert!(entry.calls[0].1["create"]["one"].get("myRights").is_none());
+            assert!(entry.calls[0].1["create"]["one"].get("size").is_none());
+            assert_eq!(
+                files(&store, &scope).unwrap()["list"][0]["blobId"],
+                upload.blob_id
+            );
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(files(&store, &scope).unwrap()["list"][0]["id"], object);
+        assert_eq!(journal::entries(&store, &scope).unwrap()[0].status, "held");
+        let mut read_only = config;
+        read_only.read_only = true;
+        assert!(local_object_set_inner(
+            &store,
+            &read_only,
+            false,
+            "FileNode/set".into(),
+            json!({"accountId":"files","destroy":[object]})
+        )
+        .is_err());
+    }
     #[test]
     fn every_write_kind_enforces_read_only_current_membership_and_account_rights() {
         let dir = tempfile::tempdir().unwrap();

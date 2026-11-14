@@ -256,6 +256,15 @@ pub fn queue_object(
                 };
                 if action == "create" && kind == "file" {
                     local["myRights"] = json!({"mayRead":true,"mayAddChildren":true,"mayRename":true,"mayDelete":true,"mayModifyContent":true,"mayShare":false});
+                    if local.get("parentId").is_none() {
+                        local["parentId"] = Value::Null;
+                    }
+                    if let Some(blob) = local["blobId"]
+                        .as_str()
+                        .filter(|id| id.starts_with(crate::uploads::PREFIX))
+                    {
+                        local["size"] = json!(crate::uploads::describe(store, scope, blob)?.size);
+                    }
                 }
                 if action == "update" {
                     patch(&mut local, value)?;
@@ -290,6 +299,11 @@ pub fn queue_object(
                             .as_object_mut()
                             .ok_or("invalidArguments")?
                             .remove("id");
+                        if kind == "file" {
+                            let object = payload.as_object_mut().ok_or("invalidArguments")?;
+                            object.remove("myRights");
+                            object.remove("size");
+                        }
                         create.insert(name, payload);
                         existing.local = Some(local.clone());
                         existing.id = j.next;
