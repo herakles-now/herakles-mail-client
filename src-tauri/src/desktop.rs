@@ -208,12 +208,8 @@ fn answer_local_batch(
         let answer = if let Err(kind) = &resolved {
             Err(*kind)
         } else if let Some((mail, metadata)) = snapshots.get(target) {
-            let state = format!(
-                "local:{}:{}:{}",
-                metadata.email_state.as_deref().unwrap_or("empty"),
-                metadata.mailbox_state.as_deref().unwrap_or("empty"),
-                metadata.next_operation
-            );
+            let state = local_state(store, &sync::scope(config, target), metadata)
+                .map_err(str::to_owned)?;
             if require_capability(store, config, target, "urn:ietf:params:jmap:mail").is_err() {
                 Err("accountNotSupportedByMethod")
             } else if (method.starts_with("Mailbox/") && metadata.mailbox_state.is_none())
@@ -258,6 +254,24 @@ fn answer_local_batch(
         }
     }
     Ok(json!({"methodResponses":responses,"sessionState":"desktop"}))
+}
+
+fn local_state(
+    store: &Store,
+    scope: &str,
+    metadata: &crate::replica::Metadata,
+) -> Result<String, &'static str> {
+    let mut state = format!(
+        "local:{}:{}:{}",
+        metadata.email_state.as_deref().unwrap_or("empty"),
+        metadata.mailbox_state.as_deref().unwrap_or("empty"),
+        metadata.next_operation
+    );
+    let revision = crate::journal::revision(store, scope).map_err(|_| "serverFail")?;
+    if revision > 0 {
+        state.push_str(&format!(":journal-{revision}"));
+    }
+    Ok(state)
 }
 
 fn answer_email_set(
@@ -312,12 +326,7 @@ fn answer_email_set(
             }
         }
         let metadata = store.metadata(&scope).map_err(|_| "serverFail")?;
-        let new_state = format!(
-            "local:{}:{}:{}",
-            metadata.email_state.as_deref().unwrap_or("empty"),
-            metadata.mailbox_state.as_deref().unwrap_or("empty"),
-            metadata.next_operation
-        );
+        let new_state = local_state(store, &scope, &metadata)?;
         return Ok(
             json!({"accountId":account,"oldState":old_state,"newState":new_state,"updated":updated,"notUpdated":not_updated}),
         );
@@ -398,12 +407,7 @@ fn answer_email_set(
         return Err("invalidArguments");
     }
     let metadata = store.metadata(&scope).map_err(|_| "serverFail")?;
-    let new_state = format!(
-        "local:{}:{}:{}",
-        metadata.email_state.as_deref().unwrap_or("empty"),
-        metadata.mailbox_state.as_deref().unwrap_or("empty"),
-        metadata.next_operation
-    );
+    let new_state = local_state(store, &scope, &metadata)?;
     Ok(
         json!({"accountId":account,"oldState":old_state,"newState":new_state,"created":created,"notCreated":not_created,"destroyed":destroyed,"notDestroyed":not_destroyed}),
     )

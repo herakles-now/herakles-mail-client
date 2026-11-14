@@ -7,7 +7,7 @@ import type { CalendarEvent } from '@/lib/jmap/types';
 import type { OfflineMethodCall, OfflineResponse } from '@/lib/jmap/offline-hooks';
 import { format } from 'date-fns';
 
-interface Snapshot { accessDenied?: boolean; calendars: Record<string, any>[]; events: Record<string, Record<string, any>>; identities: Record<string, any>[]; eventState: string | null; calendarState: string | null; }
+interface Snapshot { localRevision?: number; accessDenied?: boolean; calendars: Record<string, any>[]; events: Record<string, Record<string, any>>; identities: Record<string, any>[]; eventState: string | null; calendarState: string | null; }
 
 function rangeBound(value: unknown, zone: string): Date | null {
   if (typeof value !== 'string') return null;
@@ -71,7 +71,7 @@ export async function answerCalendar(methodCalls: OfflineMethodCall[], defaultAc
       const snapshot = snapshots.get(account)!;
       if (snapshot.accessDenied) throw new Error('accountNotSupportedByMethod');
       if (!snapshot.calendarState) throw new Error('serverUnavailable');
-      const state = `local-calendar:${snapshot.eventState || 'empty'}:${snapshot.calendarState}`;
+      const state = `local-calendar:${snapshot.eventState || 'empty'}:${snapshot.calendarState}:${snapshot.localRevision ?? 0}`;
       let result: Record<string, any>;
       if (method === 'CalendarEvent/query') {
         if (!snapshot.eventState) throw new Error('serverUnavailable');

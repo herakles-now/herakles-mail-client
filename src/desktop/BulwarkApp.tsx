@@ -122,6 +122,7 @@ export default function BulwarkApp() {
     const onSyncRequested = () => requestSync('manual');
     window.addEventListener('desktop-storage-error', storageError);
     window.addEventListener('desktop-write-queued', queued);
+    window.addEventListener('desktop-changes-updated', updateWrites);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     window.addEventListener('desktop-sync-requested', onSyncRequested);
@@ -229,7 +230,7 @@ export default function BulwarkApp() {
       void invoke('log_frontend_event', { level: 'error', area: 'ui', event: 'bootstrap_failed' }).catch(() => {});
       if (active) setError(typeof reason === 'string' ? reason : 'Desktop-Start fehlgeschlagen.');
     });
-    return () => { active = false; window.clearTimeout(timer); window.clearTimeout(pushTimer); visibilityCleanup(); stopPush(); stopPushStatus(); window.removeEventListener('desktop-storage-error', storageError); window.removeEventListener('desktop-write-queued', queued); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('desktop-sync-requested', onSyncRequested); window.removeEventListener('desktop-server-reachable', onServerReachable); window.removeEventListener('desktop-sync-progress', onSyncProgress); };
+    return () => { active = false; window.clearTimeout(timer); window.clearTimeout(pushTimer); visibilityCleanup(); stopPush(); stopPushStatus(); window.removeEventListener('desktop-storage-error', storageError); window.removeEventListener('desktop-write-queued', queued); window.removeEventListener('desktop-changes-updated', updateWrites); window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); window.removeEventListener('desktop-sync-requested', onSyncRequested); window.removeEventListener('desktop-server-reachable', onServerReachable); window.removeEventListener('desktop-sync-progress', onSyncProgress); };
   }, []);
   const toggleOfflineMode = async () => {
     if (!offlineMode && connectivity === 'offline') {

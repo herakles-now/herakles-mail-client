@@ -97,6 +97,106 @@ fn database_error(_: impl std::fmt::Display) -> String {
 }
 
 impl Store {
+    pub fn pending_revision(&self, scope: &str) -> Result<String, String> {
+        let meta = self.metadata(scope)?;
+        encode(&(meta.email_state, meta.mailbox_state, meta.next_operation))
+    }
+    /// Resolve one exact intent. Retrying is held with a fresh sequence, so a
+    /// previous selection never authorizes the replacement operation.
+    pub fn resolve_pending(
+        &self,
+        scope: &str,
+        sequence: u64,
+        retry: bool,
+        expected: &str,
+    ) -> Result<(), String> {
+        let tx = self.0.begin_write().map_err(database_error)?;
+        {
+            let mut metadata = tx.open_table(REPLICAS).map_err(database_error)?;
+            let mut meta: Metadata = metadata
+                .get(scope)
+                .map_err(database_error)?
+                .map(|r| decode(r.value()))
+                .transpose()?
+                .unwrap_or_default();
+            if retry
+                && encode(&(
+                    meta.email_state.clone(),
+                    meta.mailbox_state.clone(),
+                    meta.next_operation,
+                ))? != expected
+            {
+                return Err("Serverstand oder lokale Änderungen wurden inzwischen aktualisiert. Bitte erneut prüfen.".into());
+            }
+            let key = operation_key(scope, sequence);
+            let mut found = false;
+            for definition in [OUTBOX, DELETE_OUTBOX] {
+                let mut table = tx.open_table(definition).map_err(database_error)?;
+                let raw = table
+                    .get(key.as_str())
+                    .map_err(database_error)?
+                    .map(|r| r.value().to_owned());
+                if let Some(raw) = raw {
+                    let mut operation: Value = decode(&raw)?;
+                    if retry {
+                        if operation["blocked"].is_null() {
+                            return Err(
+                                "Nur abgelehnte Änderungen können erneut vorgemerkt werden.".into(),
+                            );
+                        }
+                        let start = outbox_prefix(scope);
+                        for other_definition in [OUTBOX, DELETE_OUTBOX] {
+                            // Read the committed queue through a read transaction;
+                            // the exclusive writer lock prevents concurrent changes.
+                            let read = self.0.begin_read().map_err(database_error)?;
+                            let other =
+                                read.open_table(other_definition).map_err(database_error)?;
+                            for row in other.range(start.as_str()..).map_err(database_error)? {
+                                let (k, v) = row.map_err(database_error)?;
+                                if !k.value().starts_with(&start) {
+                                    break;
+                                }
+                                let newer: Value = decode(v.value())?;
+                                if newer["emailId"] == operation["emailId"]
+                                    && newer["sequence"].as_u64().unwrap_or(0) > sequence
+                                {
+                                    return Err("Eine neuere lokale Änderung an dieser Nachricht liegt vor. Alte Aktion verwerfen.".into());
+                                }
+                            }
+                        }
+                        meta.next_operation = meta
+                            .next_operation
+                            .checked_add(1)
+                            .ok_or("Änderungsnummer ausgeschöpft.")?;
+                        operation["sequence"] = Value::from(meta.next_operation);
+                        operation["blocked"] = Value::Null;
+                        operation["requiresReview"] = Value::Bool(true);
+                        table
+                            .insert(
+                                operation_key(scope, meta.next_operation).as_str(),
+                                encode(&operation)?.as_str(),
+                            )
+                            .map_err(database_error)?;
+                    } else {
+                        meta.next_operation = meta
+                            .next_operation
+                            .checked_add(1)
+                            .ok_or("Änderungsnummer ausgeschöpft.")?;
+                    }
+                    table.remove(key.as_str()).map_err(database_error)?;
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Err("Änderung wurde inzwischen aktualisiert oder abgeschlossen.".into());
+            }
+            metadata
+                .insert(scope, encode(&meta)?.as_str())
+                .map_err(database_error)?;
+        }
+        tx.commit().map_err(database_error)
+    }
     pub fn change_requires_review(&self, scope: &str, sequence: u64) -> Result<bool, String> {
         let tx = self.0.begin_read().map_err(database_error)?;
         let key = operation_key(scope, sequence);

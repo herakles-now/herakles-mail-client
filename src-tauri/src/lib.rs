@@ -1,6 +1,7 @@
 mod accounts;
 mod blobs;
 mod calendar;
+mod changes;
 mod config;
 mod desktop;
 mod journal;
@@ -785,6 +786,8 @@ pub fn run() {
             read_only_mode,
             write_status,
             pending_changes,
+            changes::change_details,
+            changes::resolve_change,
             approve_pending_changes,
             writes::stage_upload,
             writes::local_identities,

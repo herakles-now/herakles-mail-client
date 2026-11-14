@@ -71,6 +71,8 @@ const CALENDAR_PROPERTIES: &[&str] = &[
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     #[serde(default)]
+    pub local_revision: u64,
+    #[serde(default)]
     pub access_denied: bool,
     pub calendars: Vec<Value>,
     pub events: BTreeMap<String, Value>,
@@ -81,6 +83,7 @@ pub struct Snapshot {
 
 pub fn read(store: &Store, scope: &str) -> Result<Snapshot, String> {
     let mut snapshot = read_remote(store, scope)?;
+    snapshot.local_revision = crate::journal::revision(store, scope)?;
     if !snapshot.access_denied {
         crate::journal::overlay(store, scope, "calendar", &mut snapshot.events)?;
     }

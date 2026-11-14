@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useEmailStore } from '@/stores/email-store';
 import { useCalendarStore } from '@/stores/calendar-store';
 import { navigate } from './navigation';
+import { refreshLocalViews } from './bootstrap';
 
 interface Change {
   accountId: string;
@@ -20,6 +21,29 @@ interface Change {
   transferable: boolean;
 }
 const key = (row: Change) => JSON.stringify([row.accountId, row.journalId != null ? `journal:${row.journalId}` : row.sequence ?? row.objectId]);
+const selection = ({ accountId, sequence, journalId }: Change) => ({ accountId, sequence, journalId });
+interface ChangeDetails {
+  title: string;
+  revision: string;
+  fields: { label: string; current: unknown; desired: unknown }[];
+  warning: string;
+  canRetry: boolean;
+  canDiscard: boolean;
+  uncertain: boolean;
+}
+function displayValue(value: unknown): string {
+  if (value == null) return 'Nicht vorhanden';
+  if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
+  if (Array.isArray(value)) return value.length ? value.map(displayValue).join(', ') : 'Keine';
+  if (typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    if (typeof item.name === 'string') return item.name;
+    if (typeof item.email === 'string') return item.email;
+    return Object.entries(item).filter(([, enabled]) => enabled != null && enabled !== false)
+      .map(([name, child]) => child === true ? name : `${name}: ${displayValue(child)}`).join(', ') || 'Keine';
+  }
+  return String(value);
+}
 
 export function PendingChanges({ connectivity, readOnly }: { connectivity: string; readOnly: boolean }) {
   const [rows, setRows] = useState<Change[]>([]);
@@ -27,6 +51,8 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [inspection, setInspection] = useState<{ row: Change; details: ChangeDetails } | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
   const prompted = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -98,18 +124,56 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
     } catch { setError('Freigabe konnte nicht gespeichert werden.'); }
     finally { setBusy(false); }
   };
+  const inspect = async (row: Change) => {
+    setBusy(true); setError(''); setAcknowledged(false);
+    try { setInspection({ row, details: await invoke<ChangeDetails>('change_details', { selection: selection(row) }) }); }
+    catch (reason) { setError(typeof reason === 'string' ? reason : 'Aktion konnte nicht geprüft werden.'); }
+    finally { setBusy(false); }
+  };
+  const resolve = async (action: 'discard' | 'retry') => {
+    if (!inspection) return;
+    setBusy(true); setError('');
+    try {
+      await invoke('resolve_change', { selection: selection(inspection.row), action,
+        expectedRevision: inspection.details.revision, acknowledgeUncertain: acknowledged });
+      setInspection(null); setSelected(new Set()); setAcknowledged(false);
+      await refresh();
+      window.dispatchEvent(new Event('desktop-changes-updated'));
+      await refreshLocalViews();
+    } catch (reason) { setError(typeof reason === 'string' ? reason : 'Aktion konnte nicht aufgelöst werden.'); }
+    finally { setBusy(false); }
+  };
   const pending = rows.filter((row) => row.transferable && row.status !== 'applied').length;
   return <>
-    <button ref={trigger} type="button" className="desktop-changes-toggle" title="Ausstehende Aktionen und lokale Entwürfe anzeigen" onClick={() => { setOpen(true); void refresh(); }}>
+    <button ref={trigger} type="button" className="desktop-changes-toggle" title="Ausstehende Aktionen und lokale Entwürfe anzeigen" onClick={() => { setInspection(null); setError(''); setOpen(true); void refresh(); }}>
       {pending > 0 ? `${pending} ${pending === 1 ? 'ausstehende Aktion' : 'ausstehende Aktionen'}` : 'Keine ausstehenden Aktionen'}
     </button>
     {createPortal(<dialog ref={dialog} className="desktop-changes-dialog" aria-labelledby="desktop-changes-title" onCancel={() => setOpen(false)} onClose={() => setOpen(false)}>
       <h2 id="desktop-changes-title">Lokale Änderungen übertragen?</h2>
-      <p>Wähle die Änderungen aus, die beim Server gespeichert werden sollen. Mit „Später“ bleiben sie lokal erhalten.</p>
+      {!inspection && <p>Wähle die Änderungen aus, die beim Server gespeichert werden sollen. Mit „Später“ bleiben sie lokal erhalten.</p>}
       {connectivity !== 'online' && <p>Die Auswahl kann nach erfolgreicher Verbindung freigegeben werden.</p>}
       {readOnly && <p>Nur-Lese-Modus · Übertragung ist gesperrt.</p>}
       {error && <p role="alert">{error}</p>}
-      <div className="desktop-changes-list">
+      {inspection ? <section className="desktop-change-inspection" aria-label="Aktion prüfen">
+        <h3>{inspection.details.title}</h3>
+        <p>{inspection.details.warning}</p>
+        <div className="desktop-change-comparison"><table>
+          <thead><tr><th>Eigenschaft</th><th>Gespeicherter Serverstand</th><th>Lokale Absicht</th></tr></thead>
+          <tbody>{inspection.details.fields.map((field, index) => <tr key={index}>
+            <th scope="row">{field.label}</th><td>{displayValue(field.current)}</td><td>{displayValue(field.desired)}</td>
+          </tr>)}</tbody>
+        </table></div>
+        {inspection.details.canDiscard && <label className="desktop-change-confirm">
+          <input type="checkbox" checked={acknowledged} disabled={busy} onChange={(event) => setAcknowledged(event.target.checked)} />
+          {inspection.details.uncertain ? 'Ich habe den Serverstatus geprüft. Nur lokal abschließen; keine Serveränderung zurücknehmen.' : 'Diese lokale Absicht verwerfen. Bereits übertragene Änderungen bleiben auf dem Server.'}
+        </label>}
+        <div className="desktop-changes-actions">
+          <button type="button" disabled={busy} onClick={() => { setInspection(null); setError(''); }}>Zurück</button>
+          <button type="button" disabled={busy} onClick={() => { void inspect(inspection.row); }}>Stand neu laden</button>
+          {inspection.details.canRetry && <button type="button" disabled={busy || readOnly} onClick={() => { void resolve('retry'); }}>Erneut vormerken</button>}
+          {inspection.details.canDiscard && <button type="button" disabled={busy || !acknowledged} onClick={() => { void resolve('discard'); }}>{inspection.details.uncertain ? 'Lokal abschließen' : 'Lokale Absicht verwerfen'}</button>}
+        </div>
+      </section> : <><div className="desktop-changes-list">
         {rows.length === 0 && <p>Keine ausstehenden Änderungen oder lokalen Entwürfe.</p>}
         {rows.map((row) => <div className="desktop-change" key={key(row)}>
           <input type="checkbox" aria-label={`${row.title}: ${row.action}`} disabled={!row.transferable || !!row.blocked || ['sending', 'applied'].includes(row.status ?? '') || readOnly || busy}
@@ -117,12 +181,15 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
               const next = new Set(previous); if (event.target.checked) next.add(key(row)); else next.delete(key(row)); return next;
             })} />
           <div><strong>{row.title}</strong><p>{row.action}</p><small>Konto: {row.accountId} · {row.status === 'sending' ? 'Wird übertragen' : row.status === 'applied' ? 'Bestätigt · lokale Ansicht wird aktualisiert' : row.blocked ? `Prüfung nötig: ${row.blocked}` : !row.transferable ? 'Nur lokal gespeichert' : row.requiresReview ? 'Wartet auf Freigabe' : 'Freigegeben'}</small></div>
-          <button type="button" disabled={row.status === 'sending'} onClick={() => { void openObject(row); }}>{row.kind === 'send' && ['held', 'ready', 'blocked'].includes(row.status ?? 'held') ? 'Als Entwurf bearbeiten' : row.kind === 'send' && row.status === 'applied' ? 'Lokal öffnen' : 'Öffnen'}</button>
+          <div className="desktop-change-buttons">
+            <button type="button" disabled={busy || row.status === 'sending'} onClick={() => { void openObject(row); }}>{row.kind === 'send' && ['held', 'ready', 'blocked'].includes(row.status ?? 'held') ? 'Als Entwurf bearbeiten' : row.kind === 'send' && row.status === 'applied' ? 'Lokal öffnen' : 'Öffnen'}</button>
+            {row.transferable && !['sending', 'applied'].includes(row.status ?? '') && <button type="button" disabled={busy} onClick={() => { void inspect(row); }}>Prüfen</button>}
+          </div>
         </div>)}
       </div>
       <p>Zum Versand vorgemerkte Mails und gespeicherte Änderungen werden erst nach deiner Freigabe übertragen. Reine Entwürfe bleiben Entwürfe.</p>
       <div className="desktop-changes-actions"><button type="button" onClick={() => setOpen(false)}>Später</button>
-        <button type="button" disabled={busy || readOnly || connectivity !== 'online' || selected.size === 0} onClick={() => { void approve(); }}>Auswahl übertragen ({selected.size})</button></div>
+        <button type="button" disabled={busy || readOnly || connectivity !== 'online' || selected.size === 0} onClick={() => { void approve(); }}>Auswahl übertragen ({selected.size})</button></div></>}
     </dialog>, document.body)}
   </>;
 }

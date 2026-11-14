@@ -16,8 +16,16 @@
 .desktop-change { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-border); }
 .desktop-change > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .desktop-change small { color: var(--color-muted-foreground); }
+.desktop-change > .desktop-change-buttons { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; max-width: 240px; }
+.desktop-change-inspection h3 { margin-top: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.desktop-change-comparison { margin: 16px 0; overflow-x: auto; }
+.desktop-change-comparison table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+.desktop-change-comparison th, .desktop-change-comparison td { padding: 10px; text-align: left; vertical-align: top; border: 1px solid var(--color-border); overflow-wrap: anywhere; white-space: pre-wrap; }
+.desktop-change-comparison thead { background: var(--color-muted); }
+.desktop-change-confirm { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0; font-size: 13px; }
+.desktop-change-confirm input { margin-top: 3px; flex: none; }
 .desktop-changes-actions { display: flex; justify-content: flex-end; gap: 12px; }
-@media (max-width: 700px) { .desktop-statusbar { gap: 6px; padding: 0 6px; } .desktop-changes-toggle { padding: 5px; } }
+@media (max-width: 700px) { .desktop-statusbar { gap: 6px; padding: 0 6px; } .desktop-changes-toggle { padding: 5px; } .desktop-change { flex-wrap: wrap; } .desktop-change > .desktop-change-buttons { flex-basis: 100%; max-width: none; } .desktop-changes-actions { flex-wrap: wrap; } }
 .desktop-network-toggle { flex: none; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--color-border); border-radius: 999px; padding: 5px 10px; background: var(--color-background); color: var(--color-foreground); font: inherit; cursor: pointer; }
 .desktop-network-toggle:hover { background: var(--color-muted); }
 .desktop-network-indicator { width: 8px; height: 8px; border-radius: 50%; background: #e09a24; }

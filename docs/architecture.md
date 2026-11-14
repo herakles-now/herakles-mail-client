@@ -37,7 +37,7 @@ Am 14. November 2026 am aktuellen Arbeitsstand ausgeführt:
 - `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
   große Bundles und teilweise zugleich statische und dynamische Imports.
 - `npm run check:native`: erfolgreich.
-- `npm run test:native`: 56 bestanden, sechs Live-Tests regulär ignoriert.
+- `npm run test:native`: 60 bestanden, sechs Live-Tests regulär ignoriert.
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
 - `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
   fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
@@ -51,8 +51,8 @@ steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
 
 1. Uploads gegen Stalwart und auf den Zielplattformen prüfen; Datei-Inhaltsersetzungen
    und Verwaltung verwaister Uploads ergänzen.
-2. Blockierte und unklare Aktionen gezielt auflösen oder verwerfen können;
-   vollständigen Konflikteditor ergänzen.
+2. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
+   durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
 3. Kontakte und noch fehlende lokale JMAP-Methoden portieren.
 4. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
    unterstützen; Cachebereinigung und Speicherverwaltung ergänzen.
@@ -64,8 +64,8 @@ steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
 Die nachfolgenden Ausbaustufen dokumentieren die Entwicklung in zeitlicher
 Reihenfolge. Aussagen wie „fehlt noch“, alte Testzahlen und frühere
 Transportgrenzen beziehen sich auf die jeweilige Stufe. Für den heutigen
-Funktionsumfang gelten der aktuelle Überblick und der abschließende Abschnitt
-„Desktop-Schreibjournal und Offline-Freigabe“.
+Funktionsumfang gelten der aktuelle Überblick und die neuesten Abschnitte zu
+Schreibjournal, Uploads und lokaler Konfliktauflösung.
 
 
 
@@ -713,3 +713,51 @@ fügt über den originalen Composer eine Binärdatei an, liest sie offline byteg
 merkt die Mail offline vor und prüft Wiederladen und gezielte spätere Freigabe.
 Diese Prüfungen verwenden synthetische Daten; echte Uploads, Versand mit Anhängen
 und neue Serverdateien wurden nicht ausgeführt.
+
+
+## Blockierte und unklare Aktionen lokal auflösen
+
+Die Desktop-Änderungsübersicht bietet pro Auftrag „Prüfen“. Der Vergleich zeigt
+die betroffenen Felder aus dem zuletzt gespeicherten Serverstand und der lokalen
+Absicht. Es findet dabei kein Netzwerkzugriff statt. Bei unklaren Sendungen wird
+kein fehlender Servereintrag behauptet: Die Zustellung wurde nicht automatisch
+geprüft.
+
+- Definitiv abgelehnte Mailänderungen sowie Kalender- und Dateiaktionen können
+  erneut vorgemerkt werden. Für Kalender-/Dateiupdates wird nur der gespeicherte
+  Patch auf die neue Serverbasis angewendet; externe Änderungen an anderen
+  Feldern bleiben erhalten. Gelöschte Objekte und nicht mehr anwendbare Patches
+  lassen sich nicht auf diese Weise erneut vormerken.
+- Der Ersatzauftrag erhält eine neue Operationsnummer und wartet auf Freigabe.
+  Frühere Auswahlen gelten dafür nicht. Ein zwischen Vergleich und Auflösung
+  geänderter Serverstand oder eine geänderte Operationsnummer erfordert erneute
+  Prüfung. Eine ältere Mailabsicht darf neuere lokale Änderungen nicht überholen.
+- Abgelehnte Sendungen werden weiterhin über „Als Entwurf bearbeiten“ korrigiert.
+  Es gibt keinen pauschalen Versand-Retry. Unklare Aufträge erhalten überhaupt
+  keine Wiederholungsaktion. Sie lassen sich nach ausdrücklicher Bestätigung
+  einer Serverprüfung nur lokal abschließen.
+- „Lokale Absicht verwerfen“ entfernt genau den ausgewählten Auftrag. Die Ansicht
+  zeigt anschließend wieder die Serverbasis und verbleibende lokale Änderungen.
+  Es wird nichts auf dem Server zurückgenommen. Rein lokale Auflösung ist auch
+  offline und im Nur-Lese-Modus möglich; erneutes Vormerken bleibt im Nur-Lese-Modus gesperrt.
+- Laufende und bereits bestätigte Aufträge können nicht verworfen werden.
+  Eine noch nicht zugeordnete lokale Neuerstellung mit abhängigen Aufträgen
+  bleibt erhalten, bis die untergeordneten Absichten entfernt wurden.
+
+`src-tauri/src/changes.rs` prüft Konto, Capability, Prüfstand und erlaubten
+Zustandsübergang. Die Auflösungsbefehle verwenden denselben nativen Sync-Lock wie
+der Schreibworker. redb-Transaktionen schützen das Ersetzen und Entfernen exakter
+Operationen; Konflikt-Rebasing prüft die Basis erneut unter dem Datenbankschreiblock.
+Verworfene Journalaufträge bleiben einschließlich ihres ursprünglichen Status,
+Fehlers und Auftrags als lokaler Beleg in einer separaten redb-Tabelle erhalten.
+Diese Belege sind derzeit noch nicht in einer eigenen Historienansicht zugänglich.
+Mailflags und Entwurfslöschungen benötigen keinen unklaren Versandbeleg und werden
+beim Verwerfen aus ihrer jeweiligen Queue entfernt. Lokale Zustandskennungen und
+Ansichten werden nach der Auflösung aktualisiert, ohne einen Versand anzustoßen.
+
+Verifikation: Native Tests prüfen veraltete Prüfstände, Erhalt externer Felder,
+neue Freigabenummern, neuere lokale Mailabsichten, Kontotrennung, Nur-Lese-Sperren,
+Abhängigkeiten und persistente unklare Versandbelege. Der Browsertest prüft den
+Vergleich bei 1440 und 640 Pixeln Breite, erneutes Vormerken ohne Transport,
+bestätigtes Verwerfen und Abschließen einer unklaren Sendung ohne Wiederholung.
+Alle Prüfungen verwenden synthetische Daten.

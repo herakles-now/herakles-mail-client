@@ -12,9 +12,9 @@ export async function answerFiles(calls: OfflineMethodCall[]): Promise<OfflineRe
         window.dispatchEvent(new Event('desktop-write-queued'));
         continue;
       }
-      const snapshot = await invoke<{ list: Record<string, any>[]; state: string | null }>('local_files', { accountId: args.accountId });
+      const snapshot = await invoke<{ list: Record<string, any>[]; state: string | null; localRevision?: number }>('local_files', { accountId: args.accountId });
       if (!snapshot.state) throw new Error('serverUnavailable');
-      const state = `local-files:${snapshot.state}`;
+      const state = `local-files:${snapshot.state}:${snapshot.localRevision ?? 0}`;
       if (method === 'FileNode/get') {
         const list = snapshot.list.filter((file) => args.ids == null || args.ids.includes(file.id));
         methodResponses.push([method, { accountId: args.accountId, state, list, notFound: (args.ids || []).filter((id: string) => !list.some((file) => file.id === id)) }, id]);

@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 pub type Calls = Vec<(String, Value, String)>;
 const TABLE: TableDefinition<&str, &str> = TableDefinition::new("desktop_write_journal_v1");
+const HISTORY: TableDefinition<&str, &str> =
+    TableDefinition::new("desktop_write_resolution_history_v1");
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,6 +58,7 @@ fn mutate<T>(
 }
 pub fn initialize(store: &Store) -> Result<(), String> {
     let tx = store.0.begin_write().map_err(err)?;
+    tx.open_table(HISTORY).map_err(err)?;
     {
         let mut table = tx.open_table(TABLE).map_err(err)?;
         let rows = table
@@ -95,6 +98,17 @@ pub fn entries(store: &Store, scope: &str) -> Result<Vec<Entry>, String> {
         .unwrap_or_default();
     Ok(journal.entries)
 }
+pub fn revision(store: &Store, scope: &str) -> Result<u64, String> {
+    let tx = store.0.begin_read().map_err(err)?;
+    let table = tx.open_table(TABLE).map_err(err)?;
+    let journal: Journal = table
+        .get(scope)
+        .map_err(err)?
+        .map(|r| serde_json::from_str(r.value()).map_err(err))
+        .transpose()?
+        .unwrap_or_default();
+    Ok(journal.next)
+}
 pub fn hold(store: &Store, scope: &str) -> Result<(), String> {
     mutate(store, scope, |j| {
         for e in &mut j.entries {
@@ -114,6 +128,123 @@ pub fn approve(store: &Store, scope: &str, ids: &[u64]) -> Result<(), String> {
         }
         Ok(())
     })
+}
+
+/// Replace a definitively refused operation, invalidating every old approval.
+/// Rebase runs under the redb writer lock, against the latest committed baseline.
+pub fn retry(
+    store: &Store,
+    scope: &str,
+    id: u64,
+    rebase: impl FnOnce(&Entry) -> Result<(Option<String>, Option<Value>), String>,
+) -> Result<u64, String> {
+    mutate(store, scope, |j| {
+        let index = j
+            .entries
+            .iter()
+            .position(|e| e.id == id)
+            .ok_or("Auftrag wurde inzwischen geändert.")?;
+        let entry = &j.entries[index];
+        if entry.status != "blocked" || !["calendar", "file"].contains(&entry.kind.as_str()) {
+            return Err("Dieser Auftrag darf nicht erneut vorgemerkt werden.".into());
+        }
+        if j.entries
+            .iter()
+            .any(|e| e.id != id && e.kind == entry.kind && e.object_id == entry.object_id)
+        {
+            return Err("Für dieses Objekt liegt eine weitere lokale Änderung vor.".into());
+        }
+        let (state, local) = rebase(entry)?;
+        j.next = j
+            .next
+            .checked_add(1)
+            .ok_or("Änderungsnummer ausgeschöpft.")?;
+        let entry = &mut j.entries[index];
+        entry.id = j.next;
+        entry.status = "held".into();
+        entry.error = None;
+        entry.base_state = state;
+        entry.local = local;
+        Ok(entry.id)
+    })
+}
+
+fn depends_on(value: &Value, id: &str, field: &str) -> bool {
+    match value {
+        Value::String(value) => {
+            ["parentId", "id", "ids", "destroy"].contains(&field) && value == id
+        }
+        Value::Array(items) => items.iter().any(|v| depends_on(v, id, field)),
+        Value::Object(map) => map.iter().any(|(key, value)| {
+            (field == "calendarIds" && key == id) || depends_on(value, id, key)
+        }),
+        _ => false,
+    }
+}
+
+/// Archive the exact local intent without changing server objects. Uncertain
+/// results retain their original receipt and payload in a separate redb table.
+pub fn discard(
+    store: &Store,
+    scope: &str,
+    id: u64,
+    acknowledge_uncertain: bool,
+) -> Result<(), String> {
+    let tx = store.0.begin_write().map_err(err)?;
+    {
+        let mut table = tx.open_table(TABLE).map_err(err)?;
+        let raw = table
+            .get(scope)
+            .map_err(err)?
+            .map(|v| v.value().to_owned())
+            .ok_or("Auftrag fehlt.")?;
+        let mut journal: Journal = serde_json::from_str(&raw).map_err(err)?;
+        let index = journal
+            .entries
+            .iter()
+            .position(|e| e.id == id)
+            .ok_or("Auftrag wurde inzwischen geändert.")?;
+        let entry = &journal.entries[index];
+        if !["held", "ready", "blocked", "uncertain"].contains(&entry.status.as_str())
+            || (entry.status == "uncertain" && !acknowledge_uncertain)
+        {
+            return Err(
+                "Serverstatus zuerst prüfen; laufende oder bestätigte Aufträge bleiben erhalten."
+                    .into(),
+            );
+        }
+        if entry.object_id.starts_with("local-change-")
+            && !journal.mappings.contains_key(&entry.object_id)
+            && journal.entries.iter().any(|e| {
+                e.id != id
+                    && e.calls
+                        .iter()
+                        .any(|(_, args, _)| depends_on(args, &entry.object_id, ""))
+            })
+        {
+            return Err("Untergeordnete lokale Aufträge zuerst verwerfen.".into());
+        }
+        let archived = json!({"entry":entry,"resolution":if entry.status=="uncertain"{"checked_locally"}else{"discarded_locally"}});
+        tx.open_table(HISTORY)
+            .map_err(err)?
+            .insert(
+                serde_json::to_string(&(scope, id)).map_err(err)?.as_str(),
+                archived.to_string().as_str(),
+            )
+            .map_err(err)?;
+        journal.entries.remove(index);
+        journal.next = journal
+            .next
+            .checked_add(1)
+            .ok_or("Änderungsnummer ausgeschöpft.")?;
+        table
+            .insert(
+                scope,
+                serde_json::to_string(&journal).map_err(err)?.as_str(),
+            )
+            .map_err(err)?;
+    }
+    tx.commit().map_err(err)
 }
 pub fn enqueue_send(
     store: &Store,
@@ -672,6 +803,65 @@ pub fn edit_send(store: &Store, scope: &str, id: u64) -> Result<String, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discard_protects_local_dependencies_and_archives_uncertain_receipts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("resolution.redb");
+        let store = Store::open(&path).unwrap();
+        let objects = std::collections::BTreeMap::new();
+        let parent = queue_object(
+            &store,
+            "a",
+            "file",
+            "FileNode/set",
+            json!({"accountId":"a","create":{"parent":{"name":"Parent"}}}),
+            &objects,
+            Some("s1".into()),
+            true,
+        )
+        .unwrap();
+        let parent_object = parent["created"]["parent"]["id"].as_str().unwrap();
+        let parent_id = entries(&store, "a").unwrap()[0].id;
+        queue_object(
+            &store,
+            "a",
+            "file",
+            "FileNode/set",
+            json!({"accountId":"a","create":{"child":{"name":"Child","parentId":parent_object}}}),
+            &objects,
+            Some("s1".into()),
+            true,
+        )
+        .unwrap();
+        let child_id = entries(&store, "a").unwrap()[1].id;
+        assert!(discard(&store, "a", parent_id, false).is_err());
+        assert_eq!(entries(&store, "a").unwrap().len(), 2);
+        discard(&store, "a", child_id, false).unwrap();
+        discard(&store, "a", parent_id, false).unwrap();
+        let calls = vec![(
+            "Email/set".into(),
+            json!({"accountId":"a","create":{"e":{"subject":"Keep receipt","messageId":["stable"]}}}),
+            "create".into(),
+        )];
+        let send = enqueue_send(&store, "a", calls.clone(), false, None, None).unwrap();
+        assert!(claim(&store, "a", send).unwrap());
+        assert!(discard(&store, "a", send, true).is_err());
+        finish(&store, "a", send, Some("uncertain"), Some("timeout")).unwrap();
+        assert!(discard(&store, "a", send, false).is_err());
+        discard(&store, "a", send, true).unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let tx = store.0.begin_read().unwrap();
+        let table = tx.open_table(HISTORY).unwrap();
+        let key = serde_json::to_string(&("a", send)).unwrap();
+        let row = table.get(key.as_str()).unwrap().unwrap();
+        let receipt: Value = serde_json::from_str(row.value()).unwrap();
+        assert_eq!(receipt["resolution"], "checked_locally");
+        assert_eq!(receipt["entry"]["status"], "uncertain");
+        assert_eq!(receipt["entry"]["calls"], json!(calls));
+        assert_eq!(receipt["entry"]["error"], "timeout");
+        assert!(entries(&store, "a").unwrap().is_empty());
+    }
     use std::collections::BTreeMap;
     fn send(subject: &str) -> Calls {
         vec![

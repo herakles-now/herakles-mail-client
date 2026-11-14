@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use tauri::State;
 
-fn writable(
+pub(crate) fn writable(
     store: &Store,
     config: &TestConfig,
     account: &str,
@@ -294,7 +294,7 @@ pub async fn queue_submission(
                         )];
                         let _ = sync::composer_request(&store, &config, &cleanup).await;
                     }
-                } else if definitive_error {
+                } else if definitive_error && !accepted {
                     journal::finish(
                         &store,
                         &scope,
@@ -516,6 +516,7 @@ pub fn files(store: &Store, scope: &str) -> Result<Value, String> {
         .filter_map(|v| Some((v["id"].as_str()?.to_owned(), v.clone())))
         .collect();
     journal::overlay(store, scope, "file", &mut objects)?;
+    snapshot["localRevision"] = json!(journal::revision(store, scope)?);
     snapshot["list"] = json!(objects.values().collect::<Vec<_>>());
     Ok(snapshot)
 }

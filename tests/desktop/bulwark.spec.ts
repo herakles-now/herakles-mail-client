@@ -19,6 +19,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   const heldWrites = new Set<string>();
   let showLocalDraft = false;
   const journalWrites = new Map<number, any>();
+  const resolvedWrites: any[] = [];
   let nextJournalId = 0;
   let eventTitle = 'Offline-Kalendertermin';
   let fileName = 'Offline-Datei.txt';
@@ -111,6 +112,30 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
         for (const change of args.changes) heldWrites.delete(change.accountId);
         for (const change of args.changes) if (journalWrites.has(change.journalId)) journalWrites.get(change.journalId).status = 'ready';
         return null;
+      case 'change_details': {
+        const row = journalWrites.get(args.selection.journalId);
+        if (!row || row.accountId !== args.selection.accountId) throw 'Auftrag wurde inzwischen geändert.';
+        return { title: row.title, revision: `${row.journalId}:${row.status}`,
+          fields: [{ label: row.kind === 'send' ? 'Betreff / Titel' : 'Name', current: row.kind === 'send' ? 'Versandstatus nicht automatisch geprüft' : 'Serverfassung.txt', desired: row.title }],
+          warning: row.status === 'uncertain' ? 'Der Server kann diese Aktion bereits ausgeführt haben. Prüfe den Serverstand.' : 'Erneutes Vormerken wartet auf eine neue Freigabe.',
+          canRetry: writable && row.status === 'blocked' && row.kind !== 'send',
+          canDiscard: ['held', 'ready', 'blocked', 'uncertain'].includes(row.status), uncertain: row.status === 'uncertain' };
+      }
+      case 'resolve_change': {
+        const row = journalWrites.get(args.selection.journalId);
+        if (!row || args.expectedRevision !== `${row.journalId}:${row.status}`) throw 'Stand wurde inzwischen geändert.';
+        if (args.action === 'retry') {
+          if (!writable || row.status !== 'blocked' || row.kind === 'send') throw 'Wiederholung gesperrt.';
+          journalWrites.delete(row.journalId);
+          const journalId = ++nextJournalId;
+          journalWrites.set(journalId, { ...row, journalId, status: 'held', blocked: undefined });
+        } else {
+          if (row.status === 'uncertain' && !args.acknowledgeUncertain) throw 'Serverstatus zuerst prüfen.';
+          resolvedWrites.push(row);
+          journalWrites.delete(row.journalId);
+        }
+        return null;
+      }
       case 'refresh_desktop_session':
       case 'desktop_bootstrap': {
         if (command === 'refresh_desktop_session') {
@@ -290,6 +315,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     expect(pendingWrites.size).toBe(1);
     await page.screenshot({ path: '.cache/pending-changes-review.png' });
     await review.getByRole('button', { name: 'Später' }).click();
+
     await page.locator('.desktop-changes-toggle').click();
     await review.getByRole('checkbox').check();
     await review.getByRole('button', { name: 'Auswahl übertragen (1)' }).click();
@@ -410,6 +436,44 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     expect(calls.filter((call) => call === 'transport:calendar')).toHaveLength(1);
     expect(calls.filter((call) => call === 'transport:file')).toHaveLength(1);
     await review.getByRole('button', { name: 'Später' }).click();
+    // Resolve a conflict locally, then close an explicitly checked uncertain
+    // send. Neither action may start a transport or reuse a previous approval.
+    const blockedId = ++nextJournalId;
+    journalWrites.set(blockedId, { journalId: blockedId, accountId: 'account', objectId: 'file-1', kind: 'file', title: 'Konfliktdatei.txt', action: 'Umbenennen', status: 'blocked', blocked: 'stateMismatch', transferable: true });
+    const uncertainId = ++nextJournalId;
+    journalWrites.set(uncertainId, { journalId: uncertainId, accountId: 'account', objectId: 'local-send-uncertain', kind: 'send', title: 'Unklare Sendung', action: 'Mail versenden', status: 'uncertain', blocked: 'Serverantwort unklar', transferable: true });
+    const transportsBeforeResolution = calls.filter((call) => call.startsWith('transport:')).length;
+    await page.evaluate(() => window.dispatchEvent(new Event('desktop-changes-updated')));
+    await page.locator('.desktop-changes-toggle').click();
+    await review.locator('.desktop-change').filter({ hasText: 'Konfliktdatei.txt' }).getByRole('button', { name: 'Prüfen', exact: true }).click();
+    const inspection = review.getByRole('region', { name: 'Aktion prüfen' });
+    await expect(inspection.getByRole('cell', { name: 'Serverfassung.txt', exact: true })).toBeVisible();
+    await expect(inspection.getByRole('cell', { name: 'Konfliktdatei.txt', exact: true })).toBeVisible();
+    await page.screenshot({ path: '.cache/change-conflict-desktop.png' });
+    await page.setViewportSize({ width: 640, height: 800 });
+    await page.screenshot({ path: '.cache/change-conflict-narrow.png' });
+    expect(await inspection.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await inspection.getByRole('button', { name: 'Erneut vormerken', exact: true }).click();
+    await expect.poll(() => [...journalWrites.values()].find((row) => row.kind === 'file')?.status).toBe('held');
+    expect(calls.filter((call) => call.startsWith('transport:')).length).toBe(transportsBeforeResolution);
+    await review.locator('.desktop-change').filter({ hasText: 'Konfliktdatei.txt' }).getByRole('button', { name: 'Prüfen', exact: true }).click();
+    await expect(inspection.getByRole('button', { name: 'Lokale Absicht verwerfen', exact: true })).toBeDisabled();
+    await inspection.getByRole('checkbox').check();
+    await inspection.getByRole('button', { name: 'Lokale Absicht verwerfen', exact: true }).click();
+    await expect.poll(() => journalWrites.size).toBe(1);
+    await review.locator('.desktop-change').filter({ hasText: 'Unklare Sendung' }).getByRole('button', { name: 'Prüfen', exact: true }).click();
+    await expect(inspection.getByRole('button', { name: 'Erneut vormerken', exact: true })).toHaveCount(0);
+    await expect(inspection.getByRole('button', { name: 'Lokal abschließen', exact: true })).toBeDisabled();
+    await page.screenshot({ path: '.cache/change-uncertain-send.png' });
+    await inspection.getByRole('checkbox').check();
+    await inspection.getByRole('button', { name: 'Lokal abschließen', exact: true }).click();
+    await expect.poll(() => journalWrites.size).toBe(0);
+    expect(resolvedWrites).toHaveLength(2);
+    expect(calls.filter((call) => call.startsWith('transport:')).length).toBe(transportsBeforeResolution);
+    await review.getByRole('button', { name: 'Später', exact: true }).click();
+    await page.reload();
+    await expect(page.locator('.desktop-changes-toggle')).toHaveText('Keine ausstehenden Aktionen');
   }
   expect(calls).toContain('local_jmap');
   expect(errors).toEqual([]);

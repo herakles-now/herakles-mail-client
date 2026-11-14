@@ -13,6 +13,7 @@ import { usePolicyStore } from '@/stores/policy-store';
 import { useEmailStore } from '@/stores/email-store';
 import { useCalendarStore } from '@/stores/calendar-store';
 import { useIdentityStore } from '@/stores/identity-store';
+import { useFileStore } from '@/stores/file-store';
 import { answerCalendar } from './calendar';
 import { DEFAULT_POLICY } from '@/lib/admin/types';
 import { applyLiteConfig } from '@/lib/lite-config';
@@ -21,6 +22,28 @@ import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY }
 import type { DesktopSession } from './accounts';
 export interface Bootstrap { session: DesktopSession; serverUrl: string; username: string; readOnly: boolean; }
 let currentLogin: { info: Bootstrap; client: JMAPClient; localId: string } | null = null;
+
+// Re-read only the local IPC adapters after resolving an intention. This must
+// work offline and must not start transmission of a newly held retry.
+export async function refreshLocalViews(): Promise<void> {
+  if (!currentLogin) return;
+  const { client, info } = currentLogin;
+  if (accountsFor(info.session, MAIL_CAPABILITY).length) {
+    await useEmailStore.getState().fetchMailboxes(client);
+    await useEmailStore.getState().fetchEmails(client);
+    const selected = useEmailStore.getState().selectedEmail;
+    if (selected) {
+      const refreshed = await client.getEmail(selected.id, selected.sourceAccountId).catch(() => null);
+      useEmailStore.setState({ selectedEmail: refreshed ? { ...selected, ...refreshed } : null });
+    }
+  }
+  if (accountsFor(info.session, CALENDAR_CAPABILITY).length) {
+    await useCalendarStore.getState().fetchCalendars(client);
+    const range = useCalendarStore.getState().dateRange;
+    if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
+  }
+  if (useFileStore.getState().client) await useFileStore.getState().refresh();
+}
 
 export async function bootstrapBulwark(): Promise<Bootstrap> {
   (globalThis as unknown as { __DESKTOP_PLUGIN_URL__: string }).__DESKTOP_PLUGIN_URL__ = convertFileSrc('index.html', 'bulwark-plugin');
