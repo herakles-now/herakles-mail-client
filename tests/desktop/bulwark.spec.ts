@@ -13,6 +13,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   let failMailSync = false;
   const syncedMail = new Set<string>();
   const syncedCalendars = new Set<string>();
+  const syncedContacts = new Set<string>();
   let flagged = false;
   let mailboxIds: Record<string, boolean> = { inbox: true };
   const pendingWrites = new Set<string>();
@@ -144,12 +145,23 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
         }
         const info: any = { serverUrl: 'https://mail.example.test', username: 'reader@example.test', readOnly: !writable,
         session: { username: 'reader@example.test', state: 'fixture', apiUrl: 'https://mail.example.test/jmap', uploadUrl: 'https://mail.example.test/upload/{accountId}',
-          capabilities: { 'urn:ietf:params:jmap:core': { maxObjectsInGet: 500, maxCallsInRequest: 16 }, 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {} },
-          accounts: { account: { name: 'Desktop Test', isPersonal: true, isReadOnly: !writable, accountCapabilities: { 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {} } } },
+          capabilities: { 'urn:ietf:params:jmap:core': { maxObjectsInGet: 500, maxCallsInRequest: 16 }, 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {}, 'urn:ietf:params:jmap:contacts': {} },
+          accounts: { account: { name: 'Desktop Test', isPersonal: true, isReadOnly: !writable, accountCapabilities: { 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {}, 'urn:ietf:params:jmap:contacts': {} } } },
           primaryAccounts: { 'urn:ietf:params:jmap:mail': 'account', 'urn:ietf:params:jmap:calendars': 'account', 'urn:ietf:params:jmap:submission': 'account', 'urn:ietf:params:jmap:filenode': 'account' } } };
         if (sharesDiscovered) info.session.accounts.shared = { name: 'Teamfreigabe', isPersonal: false, isReadOnly: true, accountCapabilities: {} };
         return info;
       }
+      case 'sync_contacts': if (!serverAvailable) throw new Error('Server offline'); syncedContacts.add(args.accountId); return null;
+      case 'local_contacts': return { methodResponses: args.methodCalls.map(([method, argument, id]: [string, any, string]) => {
+        const target = argument.accountId || args.accountId;
+        const shared = target === 'shared';
+        const contact = { id: 'contact-1', addressBookIds: { 'book-1': true }, name: { full: shared ? 'Team Kontakt' : 'Ada Lokal' },
+          emails: { e: { address: shared ? 'team@example.test' : 'ada@example.test' } }, phones: { p: { number: '+49123456789' } } };
+        if (method === 'AddressBook/get') return [method, { accountId: target, state: 'books-1', list: [{ id: 'book-1', name: shared ? 'Team-Adressbuch' : 'Lokales Adressbuch', isDefault: true, myRights: { mayRead: true, mayWrite: false, mayDelete: false, mayShare: false } }], notFound: [] }, id];
+        if (method === 'ContactCard/query') return [method, { accountId: target, queryState: 'contacts-1', position: argument.position || 0, total: 1, canCalculateChanges: false, ids: (argument.position || 0) === 0 ? ['contact-1'] : [] }, id];
+        if (method === 'ContactCard/get') return [method, { accountId: target, state: 'contacts-1', list: [contact], notFound: [] }, id];
+        return ['error', { type: method.endsWith('/set') ? 'forbidden' : 'unknownMethod' }, id];
+      }) };
       case 'local_calendar_snapshot': return {
         calendarState: 'calendar-fixture', eventState: 'event-fixture', identities: [],
         calendars: [{ id: 'calendar-1', name: args.accountId === 'shared' ? 'Team-Kalender' : 'Offline-Kalender', color: '#2563eb', sortOrder: 0,
@@ -355,6 +367,23 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   await expect(page.getByText('Team-Kalender', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Freigegebener Termin', { exact: true }).first()).toBeVisible();
   await page.screenshot({ path: '.cache/bulwark-calendar.png', fullPage: true });
+  await page.goto('/de/contacts');
+  await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Team Kontakt', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Lokales Adressbuch', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('.desktop-contacts-notice')).toContainText('Nur Lesen');
+  const contactSearchBox = page.getByRole('searchbox', { name: /Kontakte durchsuchen|Kontakte suchen/ }).first();
+  await contactSearchBox.fill('ada');
+  await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Team Kontakt', { exact: true })).toHaveCount(0);
+  await contactSearchBox.fill('');
+  await page.getByText('Ada Lokal', { exact: true }).first().click();
+  await expect(page.getByText('ada@example.test', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Kontakt bearbeiten', exact: true })).toBeDisabled();
+  const contactWrite = await page.evaluate(async () => (globalThis as any).__bulwarkOfflineHooks.answer(
+    { getAccountId: () => 'account' }, [['ContactCard/set', { accountId: 'account', destroy: ['contact-1'] }, 'blocked-contact-write']]));
+  expect(contactWrite.methodResponses[0][1].type).toBe('forbidden');
+  await page.screenshot({ path: `.cache/contacts-${writable ? 'write' : 'read'}.png` });
   await page.goto('/de/settings/plugins');
   await expect(page.locator('input[type="file"]')).toBeAttached();
   const zip = new JSZip();
@@ -381,6 +410,13 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   await page.goto('/de/calendar');
   await expect(page.getByText('Offline-Kalendertermin', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Freigegebener Termin', { exact: true }).first()).toBeVisible();
+  await page.goto('/de/contacts');
+  await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Team Kontakt', { exact: true }).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Team Kontakt', { exact: true }).first()).toBeVisible();
+  expect([...syncedContacts].sort()).toEqual(['account', 'shared']);
   expect([...syncedMail].sort()).toEqual(['account', 'shared']);
   expect([...syncedCalendars].sort()).toEqual(['account', 'shared']);
   if (writable) {

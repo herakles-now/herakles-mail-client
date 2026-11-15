@@ -1,6 +1,6 @@
 # Architektur: lokale Replik als Arbeitsgrundlage
 
-Stand: 14. November 2026. Die folgenden Abschnitte beschreiben den aktuellen
+Stand: 15. November 2026. Die folgenden Abschnitte beschreiben den aktuellen
 Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshistorie.
 
 ## Aktueller Überblick
@@ -19,7 +19,9 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
 - Kalenderereignisse und Dateimetadaten nutzen lokale Überlagerungen und das
   Schreibjournal. Neue Datei-Uploads und Composer-Anhänge werden ebenfalls
   lokal gehalten und als Abhängigkeiten freigegebener Aufträge hochgeladen.
-  Datei-Inhaltsersetzungen, Kontakte und Kalenderverwaltung fehlen noch.
+  Datei-Inhaltsersetzungen, Kontaktänderungen/-fotos und Kalenderverwaltung fehlen noch.
+- Kontakte und Adressbücher werden lesend über eine kontogetrennte native redb-Replik
+  bereitgestellt. Suche, Details und freigegebene Adressbücher funktionieren offline.
 - Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
   offline. Automatische Cachebereinigung fehlt.
 - Offline-Aufträge benötigen beim Wiederverbinden eine Auswahl zur Übertragung.
@@ -33,13 +35,14 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
 
 ## Aktuelle Verifikation
 
-Am 14. November 2026 am aktuellen Arbeitsstand ausgeführt:
+Am 15. November 2026 am aktuellen Arbeitsstand ausgeführt:
 
 - `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
   große Bundles und teilweise zugleich statische und dynamische Imports.
 - `npm run check:native`: erfolgreich.
-- `npm run test:native`: 64 bestanden, sieben Live-Tests regulär ignoriert.
-  Der separat gegatete 1-KiB-Upload-Live-Test wurde zusätzlich erfolgreich ausgeführt.
+- `npm run test:native`: 66 bestanden, acht Live-Tests regulär ignoriert.
+  Der separat gegatete 1-KiB-Upload-Live-Test wurde am 14. November erfolgreich ausgeführt.
+  Der Nur-Lese-Kontakttest wurde am 15. November zusätzlich erfolgreich ausgeführt.
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
 - `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
   fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
@@ -55,7 +58,8 @@ steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
    Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.
 2. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
    durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
-3. Kontakte und noch fehlende lokale JMAP-Methoden portieren.
+3. Kontaktänderungen über ein dauerhaftes Journal anbinden; weitere lokale
+   JMAP-Methoden und Kontaktfotos portieren.
 4. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
    unterstützen; Cachebereinigung und Speicherverwaltung ergänzen.
 5. Lokale Daten verschlüsseln, Linux/macOS vollständig prüfen und
@@ -820,3 +824,74 @@ Der passende vorhandene Schlüsselbundzugang wird anschließend nur in Rust gela
 ohne Migration, Speichern oder Änderung des globalen App-Kontexts. Synthetische
 Tests prüfen die Quellunveränderlichkeit und das Ablehnen geöffneter Datenbanken,
 fehlender Profilauswahl, zusätzlicher Uploads und fehlerhafter Rücklesedaten.
+
+
+## Lesende Kontakte und Adressbücher
+
+`src-tauri/src/contacts.rs` synchronisiert Adressbücher und ContactCards in einer
+nach Profil, Server, Login und JMAP-Konto getrennten redb-Ablage. Der native Worker
+verwendet `AddressBook/query/get` und `ContactCard/query/get` mit der Contacts-
+Capability; sein Transport erzwingt auch bei freigegebenen Mail-Schreibaktionen
+Nur-Lese-Betrieb. Der Wire-Datenfluss folgt Bulwarks vorhandenen Methoden und
+Stalwarts [ContactCard/get](https://github.com/stalwartlabs/stalwart/blob/main/crates/jmap/src/contact/get.rs).
+
+In dieser ersten Stufe läuft pro Abgleich ein vollständiger, paginierter Abruf:
+Abfragen verlangen bis zu 250 IDs, Get-Aufrufe enthalten höchstens 50 IDs.
+Zustände vor/nach dem Download, Seitenpositionen, Gesamtzahlen und die vollständige
+Abdeckung angeforderter IDs werden geprüft. Ein geänderter Zustand, fehlende oder
+doppelte Objekte und Netzwerkabbrüche veröffentlichen keinen Teilbestand.
+Die komplette Adressbuch-/Kontaktkopie wird erst nach erfolgreicher Prüfung in
+einem redb-Schreibvorgang ersetzt. Dadurch verschwinden auch serverseitig gelöschte
+Objekte explizit aus der Replik. Grenzen sind 100.000 Objekte pro Sammlung und
+32 MiB pro gespeichertem Snapshot. Paginierte Staging-Ablage und ContactCard/changes
+sind noch nicht implementiert; dieser Abgleich baut den Bestand im Arbeitsspeicher
+auf. Ein erfolgreicher Leerbestand ersetzt den bisherigen Bestand. Eine definitive
+Zugriffsverweigerung oder nicht unterstützte Methode veröffentlicht stattdessen
+einen gesperrten Leerbestand, sodass alte Kontakte nicht weiter ausgeliefert werden.
+
+`local_contacts` beantwortet lokale Get-/Query-Batches samt Ergebnisreferenzen,
+Eigenschaftsauswahl, Sortierung und Seitenabfragen. Jeder Aufruf prüft die aktuelle
+lokale Sitzungszugehörigkeit und Kontofähigkeit. Gleiche Objekt-IDs in verschiedenen
+Konten bleiben getrennt; entfernte Freigaben können keine alten Snapshots lesen.
+Der lokale allgemeine JMAP-Adapter unterstützt ebenfalls Kontaktmethoden für
+kombinierte Mail-/Kontaktbatches. Nicht lesbare Adressbücher und Kontakte ohne
+lesbare Buchzuordnung werden ausgeblendet. Die ausgelieferte Buchzuordnung enthält
+nur lokal verfügbare lesbare Bücher.
+
+Die Suche unterstützt Text, Namen, E-Mail, Telefon, Organisation, Notiz, Spitzname,
+Adressbuch, UID, Kontaktart und Gruppenmitglied sowie AND/OR/NOT. Textsuche ist eine
+lokale Suche nach Teilzeichenfolgen ohne sprachabhängigen Serverindex; nicht
+unterstützte Filter und Sortierungen werden ausdrücklich abgelehnt. Lokale
+Änderungsabfragen verlangen einen neuen Vollabruf (`cannotCalculateChanges`).
+
+Der Bootstrap lädt Bulwarks originale Kontakt-Stores aus IPC und aktualisiert sie
+nach dem Hintergrundabgleich. Die Contacts-Capability wird pro persönlichem oder
+freigegebenem Konto ausgewertet; ein separat benanntes primäres Kontaktkonto wird
+berücksichtigt. Kontaktänderungen werden im Host auch für Bulwarks lokalen Fallback
+abgelehnt; native und HTTP-Schreibgrenzen lehnen ContactCard/set und AddressBook/set
+weiterhin ab. Kontrollierte Build-Transforms deaktivieren die primären Neu-/Edit-
+Schaltflächen. Weitere bisher vorhandene Editor-/Menüpfade können zwar angezeigt
+werden, bestätigen aber keine Änderung. Die Desktophülle kennzeichnet die Ansicht
+als Nur Lesen. Es gibt noch keine Kontakt-Schreibwarteschlange.
+
+Kontaktfotos werden noch nicht synchronisiert. Der lokale Responder liefert kein
+`media` aus, damit das originale Avatar-Element keine externen Bildadressen oder
+noch nicht lokal unterstützte Contact-Blobs automatisch nachlädt. Kontaktgruppen
+werden als vorhandene ContactCards lesend erhalten; die Principal-Firmenübersicht
+und volle Filter-/Schreibparität bleiben außerhalb dieser Stufe.
+
+Verifikation: Die synthetischen nativen Tests prüfen einen Bestand mit 260
+Kontakten, Pagination, Fehler und Zustandswechsel ohne Teilveröffentlichung,
+Löschungen, erneute Rechtefreigabe, Offline-Neustart, Suche, Ergebnisreferenzen,
+Kontotrennung, entfernte Freigaben, Foto-/Buchfilterung und die dauerhafte
+Schreibsperre. Die Browserprüfung nutzt die originale Kontaktansicht mit
+persönlichem und freigegebenem Adressbuch, Suche, Detailanzeige, deaktivierter
+Bearbeitung und Wiederladen bei nicht erreichbarem Server. Es werden ausschließlich
+synthetische Kontakte angezeigt oder fotografiert.
+
+`contacts::tests::live_contacts_read_only` hat am 15. November 2026 zwei
+Adressbücher und sechs Kontakte in eine temporäre redb-Datenbank geladen, deren
+Neustart und einen Folgeabgleich erfolgreich geprüft. Der Test erzwingt unabhängig
+von der gespeicherten Kontoeinstellung read_only und prüft vor dem Datenabruf,
+dass die beiden Set-Methoden lokal gesperrt sind. Keine Kontaktinhalte oder
+Zugangsdaten wurden protokolliert; es wurde nichts auf dem Server geändert.

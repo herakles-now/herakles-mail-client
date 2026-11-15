@@ -43,7 +43,7 @@ Codeauswertung. Die Hauptanwendung erlaubt weiterhin kein `unsafe-eval`.
 - Server-Proxys, verwaltete Server-Plugins und Credential-Vaults sind noch nicht portiert.
 - Externe HTTP-Dienste und eingebettete externe Sidebar-Seiten sind derzeit nicht freigegeben.
 - Mail-Lese-APIs funktionieren nur, soweit der lokale JMAP-Adapter sie unterstützt. Im ausdrücklich aktivierten Schreibmodus laufen unterstützte Mailaktionen und strukturierter Versand über die nativen lokalen Warteschlangen; Offline-Aufträge benötigen beim Wiederverbinden eine Freigabe.
-- Kalenderereignisse und Dateimetadaten nutzen inzwischen ebenfalls das Desktop-Schreibjournal. Neue Datei-Uploads und Composer-Anhänge nutzen die lokale Uploadablage und den nativen Worker. Kontakte, Datei-Inhaltsersetzungen, rohe S/MIME-Sendungen und weitere nicht portierte APIs bleiben offen.
+- Kalenderereignisse und Dateimetadaten nutzen inzwischen ebenfalls das Desktop-Schreibjournal. Neue Datei-Uploads und Composer-Anhänge nutzen die lokale Uploadablage und den nativen Worker. Kontakt-Lesezugriffe laufen ebenfalls über den lokalen nativen Adapter. Kontaktänderungen und -fotos, Datei-Inhaltsersetzungen, rohe S/MIME-Sendungen und weitere nicht portierte APIs bleiben offen.
 
 Daher ist keine pauschale Kompatibilität mit allen vorhandenen Bulwark-Plugins
 zugesagt. Die ursprünglichen Erweiterungspunkte bleiben die Grundlage; es wird kein

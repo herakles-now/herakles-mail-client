@@ -207,6 +207,13 @@ fn answer_local_batch(
         }
         let answer = if let Err(kind) = &resolved {
             Err(*kind)
+        } else if method.starts_with("AddressBook/") || method.starts_with("ContactCard/") {
+            if require_capability(store, config, target, sync::CONTACTS).is_err() {
+                Err("accountNotSupportedByMethod")
+            } else {
+                let snapshot = crate::contacts::read(store, &sync::scope(config, target))?;
+                crate::contacts::answer(&snapshot, target, &method, resolved.as_ref().unwrap())
+            }
         } else if let Some((mail, metadata)) = snapshots.get(target) {
             let state = local_state(store, &sync::scope(config, target), metadata)
                 .map_err(str::to_owned)?;
@@ -565,7 +572,7 @@ fn keyword_patch(email: &Value, patch: &Value) -> Result<Vec<(String, bool)>, &'
     Ok(changes)
 }
 
-fn resolve_references(
+pub(crate) fn resolve_references(
     args: &Value,
     prior: &std::collections::HashMap<(String, String), Value>,
 ) -> Result<Value, &'static str> {
@@ -606,7 +613,7 @@ fn resolve_references(
     Ok(Value::Object(result))
 }
 
-fn object_get(
+pub(crate) fn object_get(
     objects: &[Value],
     account: &str,
     state: &str,

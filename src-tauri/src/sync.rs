@@ -15,6 +15,7 @@ const MAIL: &str = "urn:ietf:params:jmap:mail";
 pub const SUBMISSION: &str = "urn:ietf:params:jmap:submission";
 pub const FILES: &str = "urn:ietf:params:jmap:filenode";
 pub const CALENDARS: &str = "urn:ietf:params:jmap:calendars";
+pub const CONTACTS: &str = "urn:ietf:params:jmap:contacts";
 const EMAIL_PROPERTIES: &[&str] = &[
     "id",
     "blobId",
@@ -105,6 +106,10 @@ fn authorize_method(read_only: bool, method: &str) -> Result<(), SyncError> {
         "Identity/get",
         "FileNode/get",
         "FileNode/query",
+        "AddressBook/get",
+        "AddressBook/query",
+        "ContactCard/get",
+        "ContactCard/query",
     ]
     .contains(&method);
     if !allowed_read
@@ -513,6 +518,8 @@ impl Remote for Connection {
                 CALENDARS
             } else if method.starts_with("FileNode/") {
                 FILES
+            } else if method.starts_with("AddressBook/") || method.starts_with("ContactCard/") {
+                CONTACTS
             } else if method.starts_with("Identity/") {
                 SUBMISSION
             } else {
@@ -1704,7 +1711,13 @@ mod tests {
         assert!(authorize_method(false, "Email/set").is_ok());
         assert!(authorize_method(false, "CalendarEvent/set").is_ok());
         assert!(authorize_method(false, "FileNode/set").is_ok());
-        for method in ["Mailbox/set", "EmailSubmission/set", "Unknown/get"] {
+        for method in [
+            "Mailbox/set",
+            "EmailSubmission/set",
+            "Unknown/get",
+            "ContactCard/set",
+            "AddressBook/set",
+        ] {
             assert!(authorize_method(false, method).is_err());
         }
         for method in [
@@ -1717,6 +1730,10 @@ mod tests {
             "CalendarEvent/query",
             "CalendarEvent/changes",
             "ParticipantIdentity/get",
+            "AddressBook/get",
+            "AddressBook/query",
+            "ContactCard/get",
+            "ContactCard/query",
         ] {
             assert!(authorize_method(true, method).is_ok());
         }

@@ -3,6 +3,7 @@ mod blobs;
 mod calendar;
 mod changes;
 mod config;
+mod contacts;
 mod desktop;
 mod journal;
 mod logging;
@@ -803,6 +804,8 @@ pub fn run() {
             log_frontend_event,
             local_calendar_snapshot,
             sync_calendar,
+            contacts::sync_contacts,
+            contacts::local_contacts,
             desktop::desktop_bootstrap,
             desktop::refresh_desktop_session,
             desktop::local_jmap,

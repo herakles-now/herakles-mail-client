@@ -10,6 +10,16 @@ export default defineConfig(({ mode }) => ({
     name: 'bulwark-desktop-sandbox',
     enforce: 'pre',
     transform(code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/components/contacts/contact-detail.tsx')) {
+        const needle = 'onClick={onEdit} className="gap-1.5 touch-manipulation"';
+        if (code.split(needle).length !== 2) throw new Error('Bulwark contact detail integration changed upstream');
+        return code.replace(needle, 'onClick={onEdit} disabled title="Kontakte sind derzeit nur lesend verfügbar" className="gap-1.5 touch-manipulation"');
+      }
+      if (id.replaceAll('\\', '/').endsWith('/components/contacts/contacts-sidebar.tsx')) {
+        const needle = 'label={t("new")}';
+        if (code.split(needle).length !== 2) throw new Error('Bulwark contacts sidebar integration changed upstream');
+        return code.replace(needle, `${needle} disabled`);
+      }
       if (id.replaceAll('\\', '/').endsWith('/components/calendar/calendar-app.tsx')) {
         const needle = '  const openEditModal = useCallback((event: CalendarEvent, startInForm = false) =>';
         if (!code.includes(needle)) throw new Error('Bulwark calendar integration changed upstream');

@@ -12,16 +12,35 @@ import { setClientLookup } from '@/stores/client-registry';
 import { usePolicyStore } from '@/stores/policy-store';
 import { useEmailStore } from '@/stores/email-store';
 import { useCalendarStore } from '@/stores/calendar-store';
+import { useContactStore } from '@/stores/contact-store';
 import { useIdentityStore } from '@/stores/identity-store';
 import { useFileStore } from '@/stores/file-store';
 import { answerCalendar } from './calendar';
 import { DEFAULT_POLICY } from '@/lib/admin/types';
 import { applyLiteConfig } from '@/lib/lite-config';
 import { fetchConfig } from '@/hooks/use-config';
-import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY } from './accounts';
+import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY, CONTACT_CAPABILITY } from './accounts';
 import type { DesktopSession } from './accounts';
 export interface Bootstrap { session: DesktopSession; serverUrl: string; username: string; readOnly: boolean; }
 let currentLogin: { info: Bootstrap; client: JMAPClient; localId: string } | null = null;
+const rejectContactWrite = async (): Promise<never> => { throw new Error('Kontakte stehen im Desktop-Client derzeit nur lesend zur Verfügung.'); };
+
+function initializeReadOnlyContacts() {
+  // Also reject upstream's local-only fallback paths. Contacts must not appear
+  // successfully edited in a browser store without a native durable intention.
+  useContactStore.setState({
+    contacts: [], addressBooks: [], contactsLoaded: false, selectedContactId: null, directoryPrincipals: [], directoryLoaded: false,
+    createContact: rejectContactWrite, updateContact: rejectContactWrite, deleteContact: rejectContactWrite,
+    addLocalContact: rejectContactWrite, updateLocalContact: rejectContactWrite, deleteLocalContact: rejectContactWrite,
+    createGroup: rejectContactWrite, updateGroup: rejectContactWrite, deleteGroup: rejectContactWrite,
+    addMembersToGroup: rejectContactWrite, removeMembersFromGroup: rejectContactWrite,
+    bulkDeleteContacts: rejectContactWrite, bulkAddToGroup: rejectContactWrite, moveContactToAddressBook: rejectContactWrite,
+    createAddressBook: rejectContactWrite, renameAddressBook: rejectContactWrite, removeAddressBook: rejectContactWrite,
+    setDefaultAddressBook: rejectContactWrite, shareAddressBook: rejectContactWrite, importContacts: rejectContactWrite,
+    renameKeyword: rejectContactWrite, removeKeyword: rejectContactWrite, addKeyword: rejectContactWrite,
+    addToTrustedSendersBook: rejectContactWrite, removeFromTrustedSendersBook: rejectContactWrite,
+  });
+}
 
 // Re-read only the local IPC adapters after resolving an intention. This must
 // work offline and must not start transmission of a newly held retry.
@@ -45,6 +64,14 @@ export async function refreshLocalViews(): Promise<void> {
   if (useFileStore.getState().client) await useFileStore.getState().refresh();
 }
 
+function desktopClient(info: Bootstrap): JMAPClient {
+  const client = JMAPClient.fromOfflineSession(info.serverUrl, info.username, info.session);
+  client.supportsSyntheticCalendarIds = async () => false;
+  const supportsContacts = client.supportsContacts.bind(client);
+  client.supportsContacts = (accountId) => supportsContacts(accountId || client.getContactsAccountId());
+  return client;
+}
+
 export async function bootstrapBulwark(): Promise<Bootstrap> {
   (globalThis as unknown as { __DESKTOP_PLUGIN_URL__: string }).__DESKTOP_PLUGIN_URL__ = convertFileSrc('index.html', 'bulwark-plugin');
   // Keep this optional for browser tests; native close waits for durable UI/plugin writes.
@@ -56,7 +83,7 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
     });
   }
   const info = await invoke<Bootstrap>('desktop_bootstrap');
-  const client = JMAPClient.fromOfflineSession(info.serverUrl, info.username, info.session);
+  const client = desktopClient(info);
   (globalThis as unknown as { __DESKTOP_QUEUE_SUBMISSION__: (methodCalls: unknown[], draftId?: string, draftAccountId?: string) => Promise<unknown> }).__DESKTOP_QUEUE_SUBMISSION__ = async (methodCalls, draftId, draftAccountId) => {
     const result = await invoke('queue_submission', { methodCalls, draftId: draftId ?? null, draftAccountId: draftAccountId ?? null });
     window.dispatchEvent(new Event('desktop-write-queued'));
@@ -70,6 +97,7 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
         return { methodResponses: await Promise.all(methodCalls.map(async ([method, args, id]) =>
           [method, await invoke<Record<string, any>>('local_identities', { accountId: args.accountId || requestClient.getAccountId() }), id] as [string, Record<string, any>, string])) };
       }
+      if (methodCalls.some(([method]) => method.startsWith('ContactCard/') || method.startsWith('AddressBook/'))) return invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>(methodCalls.every(([method]) => method.startsWith('ContactCard/') || method.startsWith('AddressBook/')) ? 'local_contacts' : 'local_jmap', { accountId: requestClient.getAccountId(), methodCalls });
       if (methodCalls.some(([method]) => method.startsWith('FileNode/'))) return answerFiles(methodCalls);
       if (methodCalls.some(([method]) => method.startsWith('Calendar') || method.startsWith('ParticipantIdentity/'))) {
         // Calendar writes are not part of the initial mail-flag writing scope.
@@ -142,6 +170,11 @@ export async function bootstrapBulwark(): Promise<Bootstrap> {
   });
   setClientLookup((id) => id === localId ? client : undefined);
   currentLogin = { info, client, localId };
+  initializeReadOnlyContacts();
+  if (accountsFor(info.session, CONTACT_CAPABILITY).length) {
+    await useContactStore.getState().fetchAddressBooks(client);
+    await useContactStore.getState().fetchContacts(client);
+  }
   useCalendarStore.getState().setSupported(accountsFor(info.session, CALENDAR_CAPABILITY).length > 0);
   if (useCalendarStore.getState().supportsCalendar) await useCalendarStore.getState().fetchCalendars(client);
   return info;
@@ -175,8 +208,7 @@ async function synchronizeOnce() {
     const info = await step('session_refresh_failed', () => invoke<Bootstrap>('refresh_desktop_session'));
     window.dispatchEvent(new Event('desktop-server-reachable'));
     if (sessionFingerprint(info.session) !== sessionFingerprint(currentLogin.info.session) || info.readOnly !== currentLogin.info.readOnly) {
-      const client = JMAPClient.fromOfflineSession(info.serverUrl, info.username, info.session);
-      client.supportsSyntheticCalendarIds = async () => false;
+      const client = desktopClient(info);
       const { localId } = currentLogin;
       currentLogin = { info, client, localId };
       useAuthStore.setState({ client,
@@ -205,6 +237,14 @@ async function synchronizeOnce() {
       const range = useCalendarStore.getState().dateRange;
       if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
     }
+    const contactAccounts = accountsFor(info.session, CONTACT_CAPABILITY);
+    for (const [index, id] of contactAccounts.entries()) { progress(`Kontakte ${index + 1}/${contactAccounts.length}`); await attempt('sync_contacts', id); }
+    if (contactAccounts.length) {
+      await step('local_contacts_refresh_failed', async () => {
+        await useContactStore.getState().fetchAddressBooks(client);
+        await useContactStore.getState().fetchContacts(client);
+      });
+    } else useContactStore.setState({ contacts: [], addressBooks: [], contactsLoaded: true, selectedContactId: null });
     for (const [index, id] of mailAccounts.entries()) { progress(`Nachrichten ${index + 1}/${mailAccounts.length}`); await attempt('sync_mail', id); }
     for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:filenode')) await attempt('sync_files', id);
     const writesApplied = await step('pending_changes_failed', () => invoke<boolean>('sync_pending_changes'));

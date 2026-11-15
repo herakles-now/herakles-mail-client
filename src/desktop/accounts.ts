@@ -1,4 +1,5 @@
 export const MAIL_CAPABILITY = 'urn:ietf:params:jmap:mail';
+export const CONTACT_CAPABILITY = 'urn:ietf:params:jmap:contacts';
 export const CALENDAR_CAPABILITY = 'urn:ietf:params:jmap:calendars';
 
 export interface DesktopAccount {

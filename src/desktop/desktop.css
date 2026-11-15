@@ -1,6 +1,9 @@
 @source "../../upstream/bulwark/components";
 @source "../../upstream/bulwark/app";
 .desktop-start { padding: 80px; font-family: system-ui, sans-serif; }
+.desktop-contacts { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.desktop-contacts-notice { flex: none; padding: 6px 12px; border-bottom: 1px solid var(--color-border); background: var(--color-muted); color: var(--color-muted-foreground); font: 12px system-ui, sans-serif; }
+.desktop-contacts-content { flex: 1; min-height: 0; overflow: hidden; }
 .desktop-workspace { position: fixed; inset: 0 0 40px; min-height: 0; contain: layout; }
 .desktop-workspace .h-dvh, .desktop-workspace .h-screen { height: 100%; }
 .desktop-statusbar { position: fixed; inset: auto 0 0; height: 40px; z-index: 100; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-top: 1px solid var(--color-border); background: var(--color-background); color: var(--color-foreground); font: 12px system-ui, sans-serif; }

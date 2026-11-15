@@ -44,7 +44,7 @@ fn active_profile(registry: &crate::accounts::Registry) -> Result<(&str, &str), 
         .ok_or_else(|| failure("kein aktiver Profilzugang"))?;
     Ok((&profile.id, &account.id))
 }
-fn test_config() -> Result<TestConfig, String> {
+pub(crate) fn test_config() -> Result<TestConfig, String> {
     if let Some(path) = std::env::var_os("JMAP_TEST_REGISTRY") {
         let registry = registry_snapshot(&PathBuf::from(path))?;
         let (profile, account) = active_profile(&registry)?;

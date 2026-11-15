@@ -33,7 +33,7 @@ function Routes() {
   switch (surface) {
     case 'settings': return <SettingsApp linkSegments={rest} />;
     case 'calendar': return <CalendarApp linkSegments={rest} />;
-    case 'contacts': return <ContactsApp linkSegments={rest} />;
+    case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice">Kontakte · Nur Lesen · Bearbeiten und Kontaktfotos sind noch nicht unterstützt.</div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
     case 'files': return <FilesApp linkSegments={rest} />;
     default: return <MailApp />;
   }
