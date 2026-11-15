@@ -2,7 +2,28 @@
 
 Herakles Mail is an offline-first, cross-platform JMAP desktop client built with React, TypeScript, Tauri, Rust, and redb. Stalwart is the initial server target. The interface and add-on model are based on [Bulwark Webmail](https://github.com/bulwarkmail/webmail), pinned as a Git submodule.
 
-> **Development status:** This project is under active development. Windows is the current development platform; Linux and macOS builds, complete Bulwark feature parity, and production packaging have not yet been validated.
+> **Development status:** This project is under active development. GitHub Actions builds packages for Windows, Linux, and macOS. Windows is the current development platform; full runtime validation on Linux/macOS, complete Bulwark feature parity, and production signing remain open.
+
+## Downloads
+
+Download the latest [release](https://github.com/herakles-now/herakles-mail-client/releases/latest):
+
+| Platform | Download |
+| --- | --- |
+| Windows x64 | [Installer (.exe)](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-windows-x64-setup.exe) |
+| Linux x64 | [AppImage](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-linux-x64.AppImage) · [Debian/Ubuntu (.deb)](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-linux-x64.deb) |
+| macOS Apple Silicon | [Disk image (.dmg)](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-macos-arm64.dmg) |
+| macOS Intel | [Disk image (.dmg)](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-macos-x64.dmg) |
+
+These development packages are unsigned; macOS uses ad-hoc signing without notarization. Your operating system may require approval to open them. Linux needs a desktop Secret Service keyring for credentials. Make the AppImage executable with `chmod +x Herakles-Mail-linux-x64.AppImage`.
+
+[SHA256 checksums](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/SHA256SUMS) and a [complete source archive including Bulwark](https://github.com/herakles-now/herakles-mail-client/releases/latest/download/Herakles-Mail-source.tar.gz) accompany each release.
+
+## Release builds
+
+The [Desktop release workflow](https://github.com/herakles-now/herakles-mail-client/actions/workflows/release.yml) builds all four platform/architecture combinations. A manual run produces downloadable workflow artifacts without publishing a release. Pushing a tag such as `v0.1.0` publishes a release after every build succeeds; the tag must match the versions in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. Keep both lockfiles current when changing versions. Tags containing a hyphen are marked as prereleases and do not replace the latest stable download links.
+
+Packages, checksums, and complete sources are uploaded to a draft before publication. Existing published releases are never overwritten. GitHub's automatic source archives omit the submodule; use the complete source asset above instead.
 
 ## Architecture
 

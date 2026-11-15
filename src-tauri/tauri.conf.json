@@ -15,5 +15,19 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'self' blob: bulwark-plugin: http://bulwark-plugin.localhost https://bulwark-plugin.localhost; worker-src 'self' blob:"
     }
   },
-  "bundle": { "active": false }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "license": "AGPL-3.0-only",
+    "shortDescription": "Offline-first JMAP desktop mail client",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": {
+      "../LICENSE": "licenses/LICENSE",
+      "../NOTICE": "licenses/NOTICE",
+      "../upstream/bulwark/LICENSE": "licenses/bulwark/LICENSE",
+      "../upstream/bulwark/NOTICE": "licenses/bulwark/NOTICE"
+    },
+    "macOS": { "minimumSystemVersion": "11.0", "signingIdentity": "-" }
+  }
 }
