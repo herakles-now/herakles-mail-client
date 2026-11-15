@@ -10,6 +10,7 @@ src-tauri/target/
 .cache/
 *.log
 /Herakles Mail.exe
+/release-files/
 
 src-tauri/gen/schemas/
 
