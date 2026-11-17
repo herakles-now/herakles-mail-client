@@ -416,6 +416,12 @@ pub fn queue_object(
                         && e.object_id == *key
                         && ["held", "ready", "blocked"].contains(&e.status.as_str())
                 }) {
+                    // A later RSVP must survive folding into an earlier local
+                    // no-notification edit/create. Further quiet edits must not
+                    // silently withdraw the already requested scheduling reply.
+                    if kind == "calendar" && args["sendSchedulingMessages"] == true {
+                        existing.calls[0].1["sendSchedulingMessages"] = json!(true);
+                    }
                     let was_blocked = existing.status == "blocked";
                     if was_blocked {
                         existing.base_state = base_state.clone();
@@ -969,6 +975,59 @@ mod tests {
         overlay(store, scope, "calendar", &mut objects).unwrap();
         objects.is_empty()
     }
+    #[test]
+    fn folded_calendar_reply_keeps_scheduling_request_across_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rsvp.redb");
+        for create in [false, true] {
+            let scope = if create { "create" } else { "update" };
+            let store = Store::open(&path).unwrap();
+            let objects = std::collections::BTreeMap::from([(
+                "e".into(),
+                json!({"id":"e","title":"Meeting","participants":{"me":{"participationStatus":"needs-action"}}}),
+            )]);
+            let first = if create {
+                json!({"accountId":"a","sendSchedulingMessages":false,"create":{"new":{"title":"Meeting","participants":{"me":{"participationStatus":"needs-action"}}}}})
+            } else {
+                json!({"accountId":"a","sendSchedulingMessages":false,"update":{"e":{"title":"Moved meeting"}}})
+            };
+            let response = queue_object(
+                &store,
+                scope,
+                "calendar",
+                "CalendarEvent/set",
+                first,
+                &objects,
+                Some("s1".into()),
+                true,
+            )
+            .unwrap();
+            let id = if create {
+                response["created"]["new"]["id"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            } else {
+                "e".into()
+            };
+            let mut view = objects.clone();
+            overlay(&store, scope, "calendar", &mut view).unwrap();
+            queue_object(&store,scope,"calendar","CalendarEvent/set",json!({"accountId":"a","sendSchedulingMessages":true,"update":{id.clone():{"participants/me/participationStatus":"accepted"}}}),&view,Some("s1".into()),true).unwrap();
+            overlay(&store, scope, "calendar", &mut view).unwrap();
+            queue_object(&store,scope,"calendar","CalendarEvent/set",json!({"accountId":"a","sendSchedulingMessages":false,"update":{id.clone():{"title":"Quiet follow-up"}}}),&view,Some("s1".into()),true).unwrap();
+            drop(store);
+            let store = Store::open(&path).unwrap();
+            let entry = entries(&store, scope).unwrap().remove(0);
+            assert_eq!(entries(&store, scope).unwrap().len(), 1);
+            assert_eq!(entry.calls[0].1["sendSchedulingMessages"], true);
+            assert_eq!(entry.status, "held");
+            assert_eq!(
+                entry.local.unwrap()["participants"]["me"]["participationStatus"],
+                "accepted"
+            );
+        }
+    }
+
     #[test]
     fn calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names() {
         let dir = tempfile::tempdir().unwrap();

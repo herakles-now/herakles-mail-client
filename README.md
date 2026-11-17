@@ -64,6 +64,9 @@ Useful checks:
 npm run build                 # Type-check and build the frontend
 npm run check:native          # Check the Rust/Tauri backend
 npm run test:native           # Run Rust unit tests
+npm run audit:jmap            # Regenerate the Bulwark/Stalwart compatibility inventory
+npm run check:jmap            # Reject stale inventories and unreviewed methods
+npm run test:jmap-audit       # Test static extraction and review checks
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 ```
 
@@ -97,3 +100,17 @@ We are grateful to [Stalwart Labs](https://www.stalwart.email/) for building the
 ## Upstream and licensing
 
 The Bulwark source is pinned in `upstream/bulwark.lock.json`; its own `LICENSE` and `NOTICE` remain in the submodule. Herakles Mail is licensed under **GNU AGPL version 3 only (AGPL-3.0-only)**; see [LICENSE](LICENSE) and [NOTICE](NOTICE) for project and upstream attribution. Third-party components retain their respective licenses.
+
+## JMAP compatibility inventory
+
+The [compatibility matrix](docs/jmap/matrix.md) maps Bulwark calls to pinned
+Stalwart source locations, local implementations, limitations, and test evidence.
+The accompanying JSON records every source occurrence, argument fields,
+properties, filters, sort expressions, result references, dynamic methods,
+and HTTP/push transports. It is a static audit, not a claim of full protocol
+compatibility. See [audit maintenance](docs/jmap/README.md) for scope and updates.
+
+For a read-only desktop inspection, set `HERAKLES_FORCE_READ_ONLY=1` in the
+launching process. Any presence of this variable forces loaded accounts into
+read-only mode without changing stored credentials or account settings. Remove
+the variable entirely before a subsequent normal launch.

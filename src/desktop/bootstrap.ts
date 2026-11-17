@@ -23,6 +23,7 @@ import { accountsFor, sessionFingerprint, MAIL_CAPABILITY, CALENDAR_CAPABILITY, 
 import type { DesktopSession } from './accounts';
 export interface Bootstrap { session: DesktopSession; serverUrl: string; username: string; readOnly: boolean; }
 let currentLogin: { info: Bootstrap; client: JMAPClient; localId: string } | null = null;
+export function desktopIsReadOnly(): boolean { return currentLogin?.info.readOnly ?? true; }
 const rejectContactWrite = async (): Promise<never> => { throw new Error('Kontakte stehen im Desktop-Client derzeit nur lesend zur Verfügung.'); };
 
 function initializeReadOnlyContacts() {
@@ -231,12 +232,6 @@ async function synchronizeOnce() {
       await step('local_identities_refresh_failed', async () => { useIdentityStore.getState().setIdentities(await client.getIdentities()); });
     }
     await useEmailStore.getState().fetchMailboxes(client);
-    for (const [index, id] of calendarAccounts.entries()) { progress(`Kalender ${index + 1}/${calendarAccounts.length}`); await attempt('sync_calendar', id); }
-    if (calendarAccounts.length) {
-      await step('local_calendars_refresh_failed', () => useCalendarStore.getState().fetchCalendars(client));
-      const range = useCalendarStore.getState().dateRange;
-      if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
-    }
     const contactAccounts = accountsFor(info.session, CONTACT_CAPABILITY);
     for (const [index, id] of contactAccounts.entries()) { progress(`Kontakte ${index + 1}/${contactAccounts.length}`); await attempt('sync_contacts', id); }
     if (contactAccounts.length) {
@@ -247,6 +242,13 @@ async function synchronizeOnce() {
     } else useContactStore.setState({ contacts: [], addressBooks: [], contactsLoaded: true, selectedContactId: null });
     for (const [index, id] of mailAccounts.entries()) { progress(`Nachrichten ${index + 1}/${mailAccounts.length}`); await attempt('sync_mail', id); }
     for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:filenode')) await attempt('sync_files', id);
+    // Read scheduling results after the mail pass, before presenting invitations.
+    for (const [index, id] of calendarAccounts.entries()) { progress(`Kalender ${index + 1}/${calendarAccounts.length}`); await attempt('sync_calendar', id); }
+    if (calendarAccounts.length) {
+      await step('local_calendars_refresh_failed', () => useCalendarStore.getState().fetchCalendars(client));
+      const range = useCalendarStore.getState().dateRange;
+      if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
+    }
     const writesApplied = await step('pending_changes_failed', () => invoke<boolean>('sync_pending_changes'));
     // Read back accepted submissions and mutations before refreshing the visible stores.
     if (writesApplied) {

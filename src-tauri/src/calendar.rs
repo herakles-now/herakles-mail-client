@@ -158,12 +158,38 @@ async fn event_get(
         if text(&overrides, "state")? != state {
             return Err(SyncError::ChangedDuringSnapshot);
         }
+        // Both halves must describe exactly the same objects. Missing or
+        // duplicate override rows would silently lose exclusions/cancellations.
+        let mut override_ids = BTreeSet::new();
         for row in overrides["list"].as_array().ok_or(SyncError::Protocol)? {
-            if let Some(target) = objects.iter_mut().find(|object| object["id"] == row["id"]) {
-                if let Some(value) = row.get("recurrenceOverrides") {
-                    target["recurrenceOverrides"] = value.clone();
-                }
+            let id = text(row, "id")?;
+            if !override_ids.insert(id.clone()) {
+                return Err(SyncError::Protocol);
             }
+            let target = objects
+                .iter_mut()
+                .find(|object| object["id"] == id)
+                .ok_or(SyncError::ChangedDuringSnapshot)?;
+            // Stalwart omits optional null properties, even when requested.
+            // The verified row identity and state make omission an empty map,
+            // whereas a missing row still aborts the entire snapshot.
+            let value = row.get("recurrenceOverrides").unwrap_or(&Value::Null);
+            if !value.is_null() && !value.is_object() {
+                return Err(SyncError::Protocol);
+            }
+            target["recurrenceOverrides"] = value.clone();
+        }
+        let expected: BTreeSet<String> = objects
+            .iter()
+            .map(|object| text(object, "id"))
+            .collect::<Result<_, _>>()?;
+        if override_ids != expected
+            || ids(&overrides, "notFound")?
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+                != missing.iter().cloned().collect()
+        {
+            return Err(SyncError::ChangedDuringSnapshot);
         }
     }
     Ok((state, objects, missing))
@@ -310,7 +336,10 @@ pub async fn synchronize(
                 .collect();
             let mut removed: BTreeSet<String> = ids(&changes, "destroyed")?.into_iter().collect();
             for chunk in wanted.into_iter().collect::<Vec<_>>().chunks(50) {
-                let (_, objects, missing) = event_get(remote, account, chunk).await?;
+                let (loaded_state, objects, missing) = event_get(remote, account, chunk).await?;
+                if loaded_state != next {
+                    return Err(SyncError::ChangedDuringSnapshot);
+                }
                 removed.extend(missing);
                 for object in objects {
                     snapshot.events.insert(text(&object, "id")?, object);
@@ -419,6 +448,166 @@ mod tests {
             assert_eq!(saved.event_state.as_deref(), Some("e1"));
             assert_eq!(saved.calendar_state.as_deref(), Some("c1"));
             assert!(saved.events.contains_key("e"));
+        });
+    }
+
+    #[test]
+    fn scheduling_delta_moves_and_cancels_meetings_without_mixing_states() {
+        tauri::async_runtime::block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("scheduling.redb");
+            for race in [true, false] {
+                let store = Store::open(&path).unwrap();
+                let original = Snapshot {
+                    event_state: Some("e1".into()),
+                    calendar_state: Some("c1".into()),
+                    events: BTreeMap::from([
+                        (
+                            "e".into(),
+                            json!({"id":"e","uid":"meeting","sequence":1,"start":"2026-11-18T10:00:00"}),
+                        ),
+                        ("gone".into(), json!({"id":"gone"})),
+                    ]),
+                    ..Default::default()
+                };
+                store
+                    .put("calendar:scope", &serde_json::to_string(&original).unwrap())
+                    .unwrap();
+                let state = if race { "e3" } else { "e2" };
+                let remote = Script(Mutex::new(VecDeque::from(vec![
+                    ("Calendar/get", Ok(get("c2", vec![json!({"id":"c"})]))),
+                    ("ParticipantIdentity/get", Ok(get("i1", vec![]))),
+                    (
+                        "CalendarEvent/changes",
+                        Ok(
+                            json!({"oldState":"e1","newState":"e2","updated":["e"],"created":[],"destroyed":["gone"],"hasMoreChanges":false}),
+                        ),
+                    ),
+                    (
+                        "CalendarEvent/get",
+                        Ok(get(
+                            state,
+                            vec![
+                                json!({"id":"e","uid":"meeting","sequence":2,"start":"2026-11-18T11:00:00","status":"confirmed"}),
+                            ],
+                        )),
+                    ),
+                    (
+                        "CalendarEvent/get",
+                        Ok(get(
+                            state,
+                            vec![
+                                json!({"id":"e","recurrenceOverrides":{"2026-11-25T11:00:00":{"excluded":true}}}),
+                            ],
+                        )),
+                    ),
+                ])));
+                let result = synchronize(&store, &remote, "scope", "account").await;
+                if race {
+                    assert!(matches!(result, Err(SyncError::ChangedDuringSnapshot)));
+                    assert_eq!(read(&store, "scope").unwrap().events, original.events);
+                } else {
+                    result.unwrap();
+                    drop(store);
+                    let store = Store::open(&path).unwrap();
+                    let saved = read(&store, "scope").unwrap();
+                    assert_eq!(saved.event_state.as_deref(), Some("e2"));
+                    assert_eq!(saved.events["e"]["uid"], "meeting");
+                    assert_eq!(saved.events["e"]["sequence"], 2);
+                    assert_eq!(saved.events["e"]["start"], "2026-11-18T11:00:00");
+                    assert_eq!(
+                        saved.events["e"]["recurrenceOverrides"]["2026-11-25T11:00:00"]["excluded"],
+                        true
+                    );
+                    assert!(!saved.events.contains_key("gone"));
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn omitted_optional_overrides_are_defaulted_only_for_verified_rows() {
+        tauri::async_runtime::block_on(async {
+            let remote = Script(Mutex::new(VecDeque::from(vec![
+                (
+                    "CalendarEvent/get",
+                    Ok(get(
+                        "s1",
+                        vec![json!({"id":"plain"}), json!({"id":"series"})],
+                    )),
+                ),
+                (
+                    "CalendarEvent/get",
+                    Ok(get(
+                        "s1",
+                        vec![
+                            json!({"id":"plain"}),
+                            json!({"id":"series","recurrenceOverrides":{"2026-12-01T10:00:00":{"excluded":true}}}),
+                        ],
+                    )),
+                ),
+            ])));
+            let (_, objects, missing) = event_get(&remote, "a", &["plain".into(), "series".into()])
+                .await
+                .unwrap();
+            assert!(missing.is_empty());
+            assert_eq!(objects[0]["recurrenceOverrides"], Value::Null);
+            assert_eq!(
+                objects[1]["recurrenceOverrides"]["2026-12-01T10:00:00"]["excluded"],
+                true
+            );
+        });
+    }
+
+    #[test]
+    fn incomplete_override_reads_never_replace_the_saved_meeting() {
+        tauri::async_runtime::block_on(async {
+            for rows in [
+                vec![],
+                vec![json!({"id":"other","recurrenceOverrides":null})],
+                vec![json!({"id":"e","recurrenceOverrides":false})],
+                vec![json!({"id":"e","recurrenceOverrides":null}); 2],
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let store = Store::open(&dir.path().join("calendar.redb")).unwrap();
+                let saved = Snapshot {
+                    calendar_state: Some("c1".into()),
+                    event_state: Some("e1".into()),
+                    events: BTreeMap::from([(
+                        "e".into(),
+                        json!({"id":"e","uid":"meeting","sequence":4,"recurrenceOverrides":{"2026-11-18T10:00:00":{"excluded":true}}}),
+                    )]),
+                    ..Snapshot::default()
+                };
+                store
+                    .put("calendar:scope", &serde_json::to_string(&saved).unwrap())
+                    .unwrap();
+                let remote = Script(Mutex::new(VecDeque::from(vec![
+                    ("Calendar/get", Ok(get("c2", vec![json!({"id":"c"})]))),
+                    ("ParticipantIdentity/get", Ok(get("i1", vec![]))),
+                    (
+                        "CalendarEvent/changes",
+                        Ok(
+                            json!({"oldState":"e1","newState":"e2","created":[],"updated":["e"],"destroyed":[],"hasMoreChanges":false}),
+                        ),
+                    ),
+                    (
+                        "CalendarEvent/get",
+                        Ok(get(
+                            "e2",
+                            vec![json!({"id":"e","uid":"meeting","sequence":5})],
+                        )),
+                    ),
+                    ("CalendarEvent/get", Ok(get("e2", rows))),
+                ])));
+                assert!(synchronize(&store, &remote, "scope", "account")
+                    .await
+                    .is_err());
+                let after = read(&store, "scope").unwrap();
+                assert_eq!(after.event_state, saved.event_state);
+                assert_eq!(after.calendar_state, saved.calendar_state);
+                assert_eq!(after.events, saved.events);
+            }
         });
     }
 

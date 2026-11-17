@@ -60,6 +60,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
       - run: npm ci
+      - name: Verify JMAP compatibility inventory
+        run: |
+          npm run test:jmap-audit
+          npm run check:jmap
       - name: Test release staging
         run: node --test scripts/stage-release.test.mjs
       - name: Validate release version

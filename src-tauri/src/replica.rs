@@ -431,7 +431,14 @@ impl Store {
                 if !key.value().starts_with(&start) {
                     break;
                 }
-                emails.push(decode(value.value())?);
+                let mut draft: Value = decode(value.value())?;
+                // Pre-existing local drafts were stored without a JMAP threadId.
+                // Give each its own stable, account-local thread when reading it;
+                // do not rewrite old drafts or merge unrelated drafts together.
+                if !draft["threadId"].as_str().is_some_and(|id| !id.is_empty()) {
+                    draft["threadId"] = draft["id"].clone();
+                }
+                emails.push(draft);
             }
         }
         let queue = tx.open_table(OUTBOX).map_err(database_error)?;
@@ -645,6 +652,18 @@ impl Store {
             return Err("Ungültiger Entwurf.".into());
         }
         crate::uploads::validate(self, scope, &email)?;
+        if email["receivedAt"]
+            .as_str()
+            .and_then(mail_parser::DateTime::parse_rfc3339)
+            .is_none()
+        {
+            let seconds = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| "Lokale Systemzeit ist ungueltig.")?
+                .as_secs();
+            email["receivedAt"] =
+                Value::String(mail_parser::DateTime::from_timestamp(seconds as i64).to_rfc3339());
+        }
         fn remote_ids(value: &Value, ids: &mut Vec<String>) {
             match value {
                 Value::Object(map) => {
@@ -696,6 +715,9 @@ impl Store {
                 .ok_or("Lokale Entwurfsnummer ist ausgeschöpft.")?;
             id = format!("local-draft-{:020}", meta.next_operation);
             email["id"] = Value::String(id.clone());
+            if !email["threadId"].as_str().is_some_and(|id| !id.is_empty()) {
+                email["threadId"] = Value::String(id.clone());
+            }
             let encoded = encode(&email)?;
             if encoded.len() > 5 * 1024 * 1024 {
                 return Err("Entwurf überschreitet die lokale Speichergrenze.".into());
@@ -1090,6 +1112,12 @@ mod tests {
         let mail = store.local_mail("account-a").unwrap();
         assert_eq!(mail.emails.len(), 1);
         assert_eq!(mail.emails[0]["id"], id);
+        assert_eq!(mail.emails[0]["threadId"], id);
+        let created =
+            mail_parser::DateTime::parse_rfc3339(mail.emails[0]["receivedAt"].as_str().unwrap())
+                .unwrap();
+        assert!(created.to_timestamp() > 0);
+        assert!(mail.emails[0].get("sentAt").is_none());
         assert_eq!(
             mail.emails[0]["bodyValues"]["1"]["value"],
             "Saved before sending"
@@ -1097,6 +1125,58 @@ mod tests {
         assert!(store.local_mail("account-b").unwrap().emails.is_empty());
         store.delete_local_draft("account-a", &id).unwrap();
         assert!(store.local_mail("account-a").unwrap().emails.is_empty());
+    }
+
+    #[test]
+    fn legacy_drafts_have_distinct_stable_threads_without_rewriting_missing_dates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy-drafts.redb");
+        {
+            let store = Store::open(&path).unwrap();
+            let tx = store.0.begin_write().unwrap();
+            {
+                let mut table = tx.open_table(DRAFTS).unwrap();
+                for (scope, id, thread) in [
+                    ("a", "local-draft-old-1", Value::Null),
+                    ("a", "local-draft-old-2", json!("")),
+                    ("b", "local-draft-old-1", json!("existing-thread")),
+                ] {
+                    let draft = json!({"id":id,"threadId":thread,"keywords":{"$draft":true},"mailboxIds":{"drafts":true}});
+                    table
+                        .insert(
+                            object_key(scope, Collection::Email, id).as_str(),
+                            encode(&draft).unwrap().as_str(),
+                        )
+                        .unwrap();
+                }
+            }
+            tx.commit().unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let mail = store.local_mail("a").unwrap();
+        assert_eq!(mail.emails.len(), 2);
+        for email in &mail.emails {
+            assert_eq!(email["threadId"], email["id"]);
+            assert!(email.get("receivedAt").is_none());
+            assert!(email.get("sentAt").is_none());
+        }
+        assert_ne!(mail.emails[0]["threadId"], mail.emails[1]["threadId"]);
+        assert_eq!(
+            store.local_mail("b").unwrap().emails[0]["threadId"],
+            "existing-thread"
+        );
+        // Compatibility is a read projection; old persisted data stays untouched.
+        let tx = store.0.begin_read().unwrap();
+        let table = tx.open_table(DRAFTS).unwrap();
+        let raw: Value = decode(
+            table
+                .get(object_key("a", Collection::Email, "local-draft-old-1").as_str())
+                .unwrap()
+                .unwrap()
+                .value(),
+        )
+        .unwrap();
+        assert!(raw["threadId"].is_null());
     }
 
     #[test]

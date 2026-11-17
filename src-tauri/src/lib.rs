@@ -1,10 +1,18 @@
 mod accounts;
 mod blobs;
+mod cache_settings;
 mod calendar;
+#[cfg(test)]
+mod calendar_import_probe;
+mod calendar_parse;
+#[cfg(test)]
+mod calendar_roundtrip;
 mod changes;
 mod config;
 mod contacts;
 mod desktop;
+mod email_get;
+mod email_query;
 mod journal;
 mod logging;
 mod push;
@@ -545,9 +553,17 @@ fn local_blob(
     account_id: String,
     blob_id: String,
 ) -> Result<Option<blobs::CachedBlob>, String> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
     let config = config::TestConfig::load()?;
-    let scope = sync::scope(&config, &account_id);
+    read_local_blob(&store, &config, &account_id, &blob_id)
+}
+pub(crate) fn read_local_blob(
+    store: &storage::Store,
+    config: &config::TestConfig,
+    account_id: &str,
+    blob_id: &str,
+) -> Result<Option<blobs::CachedBlob>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let scope = sync::scope(config, account_id);
     if blob_id.starts_with(uploads::PREFIX) {
         desktop::require_capability(&store, &config, &account_id, "urn:ietf:params:jmap:mail")
             .or_else(|_| desktop::require_capability(&store, &config, &account_id, sync::FILES))?;
@@ -614,7 +630,7 @@ async fn sync_mail(
             let _ = hold_offline_changes(&store);
             report_sync_error("sync", "mail_discovery", error)
         })?;
-    sync::synchronize_with_policy(
+    sync::synchronize_projected_with_policy(
         &store,
         &connection,
         &sync::scope(&config, &account_id),
@@ -658,7 +674,7 @@ async fn sync_mail(
                     break;
                 }
                 remaining -= bytes.len();
-                if store.cache_blob(&scope, &reference.id, &bytes).is_err() {
+                if store.prefetch_blob(&scope, &reference.id, &bytes).is_err() {
                     break;
                 }
             }
@@ -764,11 +780,17 @@ pub fn run() {
             let store = storage::Store::open(&directory.join("jmap.redb"))
                 .map_err(std::io::Error::other)?;
             accounts::initialize(&store).map_err(std::io::Error::other)?;
+
+
+
+
             app.manage(store);
             push::start(app.handle().clone(), network_events);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cache_settings::download_cache_usage,
+            cache_settings::set_download_cache_limit,
             cached_session,
             probe_session,
             has_account_configuration,
@@ -784,6 +806,7 @@ pub fn run() {
             queue_keyword,
             sync_mail,
             local_blob,
+            calendar_parse::local_calendar_parse,
             sync_blob,
             sync_mailboxes,
             read_only_mode,

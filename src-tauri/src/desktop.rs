@@ -657,7 +657,7 @@ pub(crate) fn object_get(
     Ok(json!({"accountId":account,"state":state,"list":list,"notFound":not_found}))
 }
 
-fn matches_filter(email: &Value, filter: &Value) -> Result<bool, &'static str> {
+fn matches_filter(email: &Value, filter: &Value, emails: &[Value]) -> Result<bool, &'static str> {
     if filter.is_null() {
         return Ok(true);
     }
@@ -667,7 +667,7 @@ fn matches_filter(email: &Value, filter: &Value) -> Result<bool, &'static str> {
             .as_array()
             .ok_or("invalidArguments")?
             .iter()
-            .map(|condition| matches_filter(email, condition))
+            .map(|condition| matches_filter(email, condition, emails))
             .collect::<Result<_, _>>()?;
         return match operator {
             "AND" => Ok(results.iter().all(|v| *v)),
@@ -687,9 +687,32 @@ fn matches_filter(email: &Value, filter: &Value) -> Result<bool, &'static str> {
         let accepted = match key.as_str() {
             "inMailbox" => email["mailboxIds"][value.as_str().ok_or("invalidArguments")?] == true,
             "inMailboxOtherThan" => email["mailboxIds"].as_object().is_some_and(|ids| {
-                ids.keys()
-                    .any(|id| !value.as_array().unwrap_or(&Vec::new()).contains(&json!(id)))
+                ids.iter().any(|(id, included)| {
+                    included == &Value::Bool(true)
+                        && !value.as_array().unwrap_or(&Vec::new()).contains(&json!(id))
+                })
             }),
+            "allInThreadHaveKeyword" | "someInThreadHaveKeyword" | "noneInThreadHaveKeyword" => {
+                // Stalwart email/query/filter.rs delegates these to thread_keywords.
+                // Our input is the current account's locally visible replica only.
+                let members: Vec<&Value> = emails
+                    .iter()
+                    .filter(|other| {
+                        if let Some(thread) = email["threadId"].as_str() {
+                            other["threadId"].as_str() == Some(thread)
+                        } else {
+                            other["id"] == email["id"]
+                        }
+                    })
+                    .collect();
+                let has =
+                    |member: &&Value| member["keywords"][value.as_str().unwrap_or("")] == true;
+                match key.as_str() {
+                    "allInThreadHaveKeyword" => members.iter().all(has),
+                    "someInThreadHaveKeyword" => members.iter().any(has),
+                    _ => !members.iter().any(has),
+                }
+            }
             "hasKeyword" => keyword(value),
             "notKeyword" => !keyword(value),
             "hasAttachment" => email["hasAttachment"] == *value,
@@ -739,7 +762,7 @@ fn answer_read(
             )
         }
         "Mailbox/get" => object_get(&mail.mailboxes, account, state, args),
-        "Email/get" => object_get(&mail.emails, account, state, args),
+        "Email/get" => crate::email_get::answer(&mail.emails, account, state, args),
         "Identity/get" => object_get(&[], account, state, args),
         "Thread/get" => {
             let mut threads = std::collections::BTreeMap::<String, Vec<Value>>::new();
@@ -758,9 +781,10 @@ fn answer_read(
             object_get(&rows, account, state, args)
         }
         "Email/query" => {
+            crate::email_query::validate(args)?;
             let mut emails = Vec::new();
             for email in &mail.emails {
-                if matches_filter(email, &args["filter"])? {
+                if matches_filter(email, &args["filter"], &mail.emails)? {
                     emails.push(email);
                 }
             }
@@ -808,7 +832,7 @@ fn answer_read(
                             a[property].as_str().cmp(&b[property].as_str())
                         };
                         if !order.is_eq() {
-                            return if sort["isAscending"] == true {
+                            return if sort["isAscending"].as_bool().unwrap_or(true) {
                                 order
                             } else {
                                 order.reverse()
@@ -829,23 +853,20 @@ fn answer_read(
                 });
             }
             let total = emails.len();
-            let position = if let Some(anchor) = args["anchor"].as_str() {
-                let position = emails
-                    .iter()
-                    .position(|email| email["id"] == anchor)
-                    .ok_or("anchorNotFound")?;
-                (position as i64 + args["anchorOffset"].as_i64().unwrap_or(0)).max(0) as usize
-            } else {
-                args["position"].as_u64().unwrap_or(0) as usize
-            };
+            let position = crate::email_query::position(args, &emails)?;
             let ids: Vec<Value> = emails
                 .into_iter()
                 .skip(position)
                 .take(args["limit"].as_u64().unwrap_or(100) as usize)
                 .map(|email| email["id"].clone())
                 .collect();
+            let reported_position = if args["anchor"].is_null() && position > total {
+                0
+            } else {
+                position
+            };
             Ok(
-                json!({"accountId":account,"queryState":state,"canCalculateChanges":false,"position":position,"ids":ids,"total":total,"collapseThreads":args["collapseThreads"] == true}),
+                json!({"accountId":account,"queryState":state,"canCalculateChanges":false,"position":reported_position,"ids":ids,"total":total,"collapseThreads":args["collapseThreads"] == true}),
             )
         }
         "Email/changes" | "Email/queryChanges" | "Mailbox/changes" => Err("cannotCalculateChanges"),
@@ -857,6 +878,151 @@ fn answer_read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bulwark_email_get_batch_projects_headers_and_mime_from_redb_offline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bulwark-get.redb");
+        let config = TestConfig {
+            url: url::Url::parse("https://mail.example.test/jmap").unwrap(),
+            username: "test".into(),
+            password: String::new(),
+            read_only: true,
+        };
+        {
+            let store = Store::open(&path).unwrap();
+            store.put(&format!("{}:desktop-session",config.cache_key()),&json!({"accounts":{"a":{"accountCapabilities":{"urn:ietf:params:jmap:mail":{}}}}}).to_string()).unwrap();
+            store.apply_remote(&sync::scope(&config,"a"),crate::replica::Collection::Email,None,"s",&[
+                json!({"id":"e","threadId":"t","mailboxIds":{"inbox":true},"subject":"Offline",
+                    "headers":[{"name":"Authentication-Results","value":"dkim=pass"}],
+                    "textBody":[{"partId":"p","type":"text/plain"}],
+                    "bodyValues":{"p":{"value":"read offline","isTruncated":false}},
+                    "internal":"not exposed"})
+            ],&[],true).unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let answer = answer_local_batch(&store,&config,"a",vec![
+            ("Email/query".into(),json!({"accountId":"a","filter":{"inMailbox":"inbox"}}),"q".into()),
+            ("Email/get".into(),json!({"accountId":"a","#ids":{"resultOf":"q","name":"Email/query","path":"/ids"},"properties":["id","threadId","subject","header:Authentication-Results:all"]}),"list".into()),
+            ("Thread/get".into(),json!({"accountId":"a","#ids":{"resultOf":"list","name":"Email/get","path":"/list/*/threadId"}}),"threads".into()),
+            ("Email/get".into(),json!({"accountId":"a","ids":["e"],"properties":["bodyValues","textBody","headers"],"fetchTextBodyValues":true,"maxBodyValueBytes":1000000}),"open".into())
+        ]).unwrap();
+        let responses = &answer["methodResponses"];
+        assert_eq!(
+            responses[1][1]["list"][0]["header:Authentication-Results:all"],
+            json!(["dkim=pass"])
+        );
+        assert!(responses[1][1]["list"][0].get("bodyValues").is_none());
+        assert!(responses[1][1]["list"][0].get("internal").is_none());
+        assert_eq!(responses[2][1]["list"][0]["emailIds"], json!(["e"]));
+        assert_eq!(
+            responses[3][1]["list"][0]["bodyValues"]["p"]["value"],
+            "read offline"
+        );
+    }
+
+    #[test]
+    fn query_contract_matches_thread_filters_and_windows_after_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("query.redb");
+        {
+            let store = Store::open(&path).unwrap();
+            store.apply_remote("a", crate::replica::Collection::Email, None, "s1", &[
+                json!({"id":"a","threadId":"t","mailboxIds":{"inbox":true},"keywords":{"$seen":true},"size":100}),
+                json!({"id":"b","threadId":"t","mailboxIds":{"archive":true},"keywords":{},"size":200}),
+                json!({"id":"c","threadId":"u","mailboxIds":{"inbox":true},"keywords":{"$seen":true},"size":300})
+            ], &[], true).unwrap();
+            store
+                .apply_remote(
+                    "other",
+                    crate::replica::Collection::Email,
+                    None,
+                    "s1",
+                    &[json!({"id":"x","threadId":"u","keywords":{}})],
+                    &[],
+                    true,
+                )
+                .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let mail = store.local_mail("a").unwrap();
+        let query = |args: Value| answer_read(&mail, "a", "s1", "Email/query", &args);
+        // The thread condition sees the entire visible thread, not just inbox hits.
+        assert_eq!(
+            query(json!({"filter":{"inMailbox":"inbox","allInThreadHaveKeyword":"$seen"}}))
+                .unwrap()["ids"],
+            json!(["c"])
+        );
+        assert_eq!(
+            query(json!({"filter":{"someInThreadHaveKeyword":"$seen"},"sort":[{"property":"id"}]}))
+                .unwrap()["ids"],
+            json!(["a", "b", "c"])
+        );
+        assert_eq!(
+            query(json!({"filter":{"noneInThreadHaveKeyword":"$flagged"}})).unwrap()["total"],
+            3
+        );
+        assert_eq!(query(json!({"filter":{"operator":"NOT","conditions":[{"allInThreadHaveKeyword":"$seen"}]},"sort":[{"property":"id"}]})).unwrap()["ids"], json!(["a","b"]));
+        let tail = query(json!({"sort":[{"property":"id"}],"position":-1})).unwrap();
+        assert_eq!(tail["ids"], json!(["c"]));
+        assert_eq!(tail["position"], 2);
+        assert_eq!(
+            query(json!({"sort":[{"property":"id"}],"position":-99,"limit":1})).unwrap()["ids"],
+            json!(["a"])
+        );
+        let exhausted = query(json!({"position":99})).unwrap();
+        assert_eq!(exhausted["ids"], json!([]));
+        assert_eq!(exhausted["position"], 0);
+        assert_eq!(query(json!({"sort":[{"property":"id"}],"collapseThreads":true,"anchor":"c","anchorOffset":-1,"limit":1})).unwrap()["ids"], json!(["a"]));
+        assert_eq!(
+            query(json!({"anchor":"missing","limit":0})),
+            Err("anchorNotFound")
+        );
+        assert_eq!(query(json!({"limit":0})).unwrap()["ids"], json!([]));
+    }
+
+    #[test]
+    fn invalid_query_contract_is_rejected_even_without_matching_messages() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("empty.redb")).unwrap();
+        let mail = store.local_mail("a").unwrap();
+        for filter in [
+            json!({"inMailbox":7}),
+            json!({"hasKeyword":false}),
+            json!({"inMailboxOtherThan":"inbox"}),
+            json!({"hasAttachment":"yes"}),
+            json!({"minSize":-1}),
+            json!({"text":false}),
+            json!({"operator":"AND","conditions":[null]}),
+            json!({"inMailbox":"missing","maxSize":"100"}),
+        ] {
+            assert_eq!(
+                answer_read(&mail, "a", "s", "Email/query", &json!({"filter":filter})),
+                Err("invalidArguments")
+            );
+        }
+        assert_eq!(
+            answer_read(
+                &mail,
+                "a",
+                "s",
+                "Email/query",
+                &json!({"filter":{"inMailbox":"missing","unknown":true}})
+            ),
+            Err("unsupportedFilter")
+        );
+        for args in [
+            json!({"position":1.5}),
+            json!({"limit":-1}),
+            json!({"sort":{}}),
+            json!({"sort":[{"property":"id","isAscending":"false"}]}),
+            json!({"collapseThreads":1}),
+        ] {
+            assert_eq!(
+                answer_read(&mail, "a", "s", "Email/query", &args),
+                Err("invalidArguments")
+            );
+        }
+    }
     #[test]
     fn local_sort_supports_sender_and_keyword_order() {
         let mail = LocalMail {

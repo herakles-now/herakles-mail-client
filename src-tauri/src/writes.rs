@@ -339,7 +339,7 @@ pub fn local_object_set(
     let config = TestConfig::load()?;
     local_object_set_inner(&store, &config, network.enabled(), method, args)
 }
-fn local_object_set_inner(
+pub(crate) fn local_object_set_inner(
     store: &Store,
     config: &TestConfig,
     network_enabled: bool,
@@ -356,11 +356,16 @@ fn local_object_set_inner(
             if snapshot.access_denied {
                 return Err("forbidden".into());
             }
-            if args["ifInState"]
-                .as_str()
-                .is_some_and(|s| !s.starts_with("local-calendar:"))
-            {
-                return Err("stateMismatch".into());
+            if let Some(state) = args.get("ifInState").filter(|v| !v.is_null()) {
+                let expected = format!(
+                    "local-calendar:{}:{}:{}",
+                    snapshot.event_state.as_deref().unwrap_or("empty"),
+                    snapshot.calendar_state.as_deref().unwrap_or(""),
+                    snapshot.local_revision
+                );
+                if state.as_str() != Some(expected.as_str()) {
+                    return Err("stateMismatch".into());
+                }
             }
             // Validate source and destination rights before publishing any optimistic result.
             let check = |event: &Value| -> Result<(), String> {
@@ -391,7 +396,17 @@ fn local_object_set_inner(
             for (id, patch) in args["update"].as_object().into_iter().flatten() {
                 let mut event = snapshot.events.get(id).cloned().ok_or("notFound")?;
                 check(&event)?;
+                let previous_sequence = event["sequence"].as_u64().unwrap_or(0);
                 journal::patch(&mut event, patch)?;
+                // Explicit incoming versions must never roll a meeting back.
+                // Ordinary edits without sequence retain the stored version.
+                if patch.get("sequence").is_some()
+                    && event["sequence"]
+                        .as_u64()
+                        .is_none_or(|s| s < previous_sequence)
+                {
+                    return Err("invalidProperties".into());
+                }
                 check(&event)?;
             }
             for id in args["destroy"].as_array().into_iter().flatten() {
@@ -576,6 +591,14 @@ pub async fn sync_pending_changes(
         .try_lock()
         .map_err(|_| "Ein Abgleich läuft bereits.")?;
     let config = TestConfig::load()?;
+    sync_pending_changes_inner(&store, &config, &network).await
+}
+pub(crate) async fn sync_pending_changes_inner(
+    store: &Store,
+    config: &TestConfig,
+    network: &NetworkMode,
+) -> Result<bool, String> {
+    crate::require_network(network)?;
     if config.read_only {
         return Ok(false);
     }
@@ -882,83 +905,112 @@ pub async fn sync_pending_changes(
                 if let Some(state) = &entry.base_state {
                     args["ifInState"] = json!(state);
                 }
-                if !journal::claim(&store, &scope, entry.id)? {
-                    continue;
-                }
-                match remote.call(&method, args).await {
-                    Ok(response) => {
-                        let success = ["created", "updated"]
-                            .iter()
-                            .any(|k| response[k].as_object().is_some_and(|m| !m.is_empty()))
-                            || response["destroyed"]
-                                .as_array()
-                                .is_some_and(|a| !a.is_empty());
-                        if success && !response["newState"].is_string() {
-                            journal::finish(
-                                &store,
-                                &scope,
-                                entry.id,
-                                Some("uncertain"),
-                                Some("Unvollständige Serverantwort; Änderung prüfen"),
-                            )?;
-                            continue;
-                        }
-                        if success {
-                            if let Some(server_id) = response["created"]
-                                .as_object()
-                                .and_then(|m| m.values().next())
-                                .and_then(|v| v["id"].as_str())
-                            {
-                                journal::remember_created(
-                                    &store,
-                                    &scope,
-                                    &entry.object_id,
-                                    server_id,
-                                )?;
-                            }
-                            journal::applied(
-                                &store,
-                                &scope,
-                                entry.id,
-                                response["newState"].as_str(),
-                            )?;
-                            changed = true;
-                            continue;
-                        }
-                        let status = Some("blocked");
-                        journal::finish(
-                            &store,
-                            &scope,
-                            entry.id,
-                            status,
-                            if success {
-                                None
-                            } else {
-                                Some(
-                                    "Server hat die Änderung abgelehnt oder einen Konflikt erkannt",
-                                )
-                            },
-                        )?;
-                    }
-                    Err(sync::SyncError::Method(_)) => journal::finish(
-                        &store,
-                        &scope,
-                        entry.id,
-                        Some("blocked"),
-                        Some("Server hat die Änderung abgelehnt oder einen Konflikt erkannt"),
-                    )?,
-                    Err(_) => journal::finish(
-                        &store,
-                        &scope,
-                        entry.id,
-                        Some("uncertain"),
-                        Some("Serverantwort unklar; Änderung prüfen"),
-                    )?,
-                }
+                changed |=
+                    transmit_object_change(&store, &remote, &scope, &entry, &method, args).await?;
             }
         }
     }
     Ok(changed)
+}
+
+// One durable object operation per entry. An unrelated acknowledgement is
+// never evidence that our calendar reply/update reached its target.
+pub(crate) async fn transmit_object_change(
+    store: &Store,
+    remote: &impl Remote,
+    scope: &str,
+    entry: &journal::Entry,
+    method: &str,
+    args: Value,
+) -> Result<bool, String> {
+    if !journal::claim(store, scope, entry.id)? {
+        return Ok(false);
+    }
+    match remote.call(method, args.clone()).await {
+        Ok(response) => {
+            let (action, key) = ["create", "update", "destroy"]
+                .into_iter()
+                .find_map(|action| {
+                    let key = if action == "destroy" {
+                        args[action].as_array()?.first()?.as_str()?.to_owned()
+                    } else {
+                        args[action].as_object()?.keys().next()?.clone()
+                    };
+                    Some((action, key))
+                })
+                .ok_or("invalidArguments")?;
+            let confirmed = match action {
+                "create" => response["created"][&key]["id"].as_str().is_some(),
+                "update" => response["updated"]
+                    .as_object()
+                    .is_some_and(|rows| rows.contains_key(&key)),
+                _ => response["destroyed"]
+                    .as_array()
+                    .is_some_and(|rows| rows.iter().any(|v| v == &key)),
+            };
+            let error_field = match action {
+                "create" => "notCreated",
+                "update" => "notUpdated",
+                _ => "notDestroyed",
+            };
+            let rejected = response[error_field][&key].is_object();
+            if confirmed && !rejected && response["newState"].is_string() {
+                if action == "create" {
+                    journal::remember_created(
+                        store,
+                        scope,
+                        &entry.object_id,
+                        response["created"][&key]["id"].as_str().unwrap(),
+                    )?;
+                }
+                journal::applied(store, scope, entry.id, response["newState"].as_str())?;
+                return Ok(true);
+            }
+            let reason = if rejected && !confirmed {
+                match response[error_field][&key]["type"].as_str() {
+                    Some("forbidden") => {
+                        "Kalender oder Objekt ist nicht mehr beschreibbar. Rechte prüfen."
+                    }
+                    Some("notFound") => {
+                        "Der Termin oder das Objekt ist auf dem Server nicht mehr vorhanden."
+                    }
+                    Some("invalidProperties") => {
+                        "Der Server hat die Termin- oder Objektdaten abgelehnt. Änderung prüfen."
+                    }
+                    _ => "Server hat die Änderung abgelehnt. Änderung prüfen.",
+                }
+            } else {
+                "Serverantwort unvollständig oder widersprüchlich. Vor erneutem Übertragen den Serverstand prüfen."
+            };
+            journal::finish(
+                store,
+                scope,
+                entry.id,
+                Some(if rejected && !confirmed {
+                    "blocked"
+                } else {
+                    "uncertain"
+                }),
+                Some(reason),
+            )?;
+        }
+        Err(sync::SyncError::Method(kind)) => {
+            let reason = match kind.as_str() {
+                "stateMismatch" => "Der Kalender oder das Objekt wurde inzwischen auf dem Server geändert. Aktuellen Stand prüfen.",
+                "forbidden" => "Kalender oder Objekt ist nicht mehr beschreibbar. Rechte prüfen.",
+                _ => "Server hat die Änderung abgelehnt oder einen Konflikt erkannt.",
+            };
+            journal::finish(store, scope, entry.id, Some("blocked"), Some(reason))?;
+        }
+        Err(_) => journal::finish(
+            store,
+            scope,
+            entry.id,
+            Some("uncertain"),
+            Some("Serverantwort unklar. Vor erneutem Übertragen den Serverstand prüfen."),
+        )?,
+    }
+    Ok(false)
 }
 
 #[cfg(test)]
@@ -1053,6 +1105,224 @@ mod tests {
         )
         .is_err());
     }
+    #[test]
+    fn calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results() {
+        use std::sync::Mutex;
+        struct ReplyRemote {
+            response: Mutex<Option<Result<Value, sync::SyncError>>>,
+            calls: Mutex<Vec<Value>>,
+        }
+        impl Remote for ReplyRemote {
+            async fn call(&self, method: &str, args: Value) -> Result<Value, sync::SyncError> {
+                assert_eq!(method, "CalendarEvent/set");
+                self.calls.lock().unwrap().push(args);
+                self.response
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("Unexpected replay")
+            }
+        }
+        tauri::async_runtime::block_on(async {
+            for (response, status) in [
+                (Ok(json!({"updated":{"e":null},"newState":"s2"})), "applied"),
+                (
+                    Ok(json!({"updated":{"other":null},"newState":"s2"})),
+                    "uncertain",
+                ),
+                (Ok(json!({"updated":{"e":null}})), "uncertain"),
+                (
+                    Ok(
+                        json!({"updated":{"e":null},"notUpdated":{"e":{"type":"forbidden"}},"newState":"s2"}),
+                    ),
+                    "uncertain",
+                ),
+                (
+                    Ok(json!({"notUpdated":{"e":{"type":"forbidden"}}})),
+                    "blocked",
+                ),
+                (
+                    Err(sync::SyncError::Method("stateMismatch".into())),
+                    "blocked",
+                ),
+                (Err(sync::SyncError::Network), "uncertain"),
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("reply.redb");
+                let store = Store::open(&path).unwrap();
+                let objects = BTreeMap::from([(
+                    "e".into(),
+                    json!({"id":"e","uid":"meeting","participants":{"me":{"participationStatus":"needs-action"}}}),
+                )]);
+                let args = json!({"accountId":"account","sendSchedulingMessages":true,"update":{"e":{"participants/me/participationStatus":"accepted"}}});
+                journal::queue_object(
+                    &store,
+                    "scope",
+                    "calendar",
+                    "CalendarEvent/set",
+                    args,
+                    &objects,
+                    Some("s1".into()),
+                    true,
+                )
+                .unwrap();
+                let entry = journal::entries(&store, "scope").unwrap().remove(0);
+                assert_eq!(entry.status, "held");
+                journal::approve(&store, "scope", &[entry.id]).unwrap();
+                let remote = ReplyRemote {
+                    response: Mutex::new(Some(response)),
+                    calls: Mutex::new(vec![]),
+                };
+                let entry = journal::entries(&store, "scope").unwrap().remove(0);
+                let mut args = entry.calls[0].1.clone();
+                args["ifInState"] = json!("s1");
+                assert_eq!(
+                    transmit_object_change(
+                        &store,
+                        &remote,
+                        "scope",
+                        &entry,
+                        "CalendarEvent/set",
+                        args.clone()
+                    )
+                    .await
+                    .unwrap(),
+                    status == "applied"
+                );
+                assert_eq!(
+                    remote.calls.lock().unwrap()[0]["sendSchedulingMessages"],
+                    true
+                );
+                assert_eq!(remote.calls.lock().unwrap()[0]["ifInState"], "s1");
+                assert_eq!(journal::entries(&store, "scope").unwrap()[0].status, status);
+                drop(store);
+                let store = Store::open(&path).unwrap();
+                journal::initialize(&store).unwrap();
+                let entry = journal::entries(&store, "scope").unwrap().remove(0);
+                assert_eq!(entry.status, status);
+                assert!(!transmit_object_change(
+                    &store,
+                    &remote,
+                    "scope",
+                    &entry,
+                    "CalendarEvent/set",
+                    args
+                )
+                .await
+                .unwrap());
+                assert_eq!(remote.calls.lock().unwrap().len(), 1);
+                assert!(journal::entries(&store, "different-account")
+                    .unwrap()
+                    .is_empty());
+            }
+        });
+    }
+
+    #[test]
+    fn calendar_versions_reject_stale_state_and_keep_changes_durable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("versions.redb");
+        let config = TestConfig {
+            url: url::Url::parse("https://mail.example.test/jmap").unwrap(),
+            username: "synthetic".into(),
+            password: String::new(),
+            read_only: false,
+        };
+        let scope = sync::scope(&config, "a");
+        {
+            let store = Store::open(&path).unwrap();
+            store.put(&format!("{}:desktop-session",config.cache_key()), &json!({"capabilities":{sync::CALENDARS:{}},"accounts":{"a":{"accountCapabilities":{sync::CALENDARS:{}},"isReadOnly":false}}}).to_string()).unwrap();
+            let snapshot = calendar::Snapshot {
+                calendar_state: Some("c1".into()),
+                event_state: Some("e1".into()),
+                calendars: vec![json!({"id":"c","myRights":{"mayWriteAll":true}})],
+                events: std::collections::BTreeMap::from([(
+                    "e".into(),
+                    json!({"id":"e","uid":"meeting","sequence":4,"start":"2026-11-18T10:00:00","calendarIds":{"c":true},"recurrenceOverrides":{"2026-11-25T10:00:00":{"start":"2026-11-25T11:00:00"}}}),
+                )]),
+                ..Default::default()
+            };
+            store
+                .put(
+                    &format!("calendar:{scope}"),
+                    &serde_json::to_string(&snapshot).unwrap(),
+                )
+                .unwrap();
+            let current = "local-calendar:e1:c1:0";
+            for state in [
+                json!("local-calendar:old:c1:0"),
+                json!("local-calendar:e1:c1:12"),
+                json!(42),
+            ] {
+                assert_eq!(
+                    local_object_set_inner(
+                        &store,
+                        &config,
+                        false,
+                        "CalendarEvent/set".into(),
+                        json!({"accountId":"a","ifInState":state,"destroy":["e"]})
+                    )
+                    .unwrap_err(),
+                    "stateMismatch"
+                );
+            }
+            for sequence in [json!(3), json!(-1), Value::Null, json!("5")] {
+                assert_eq!(local_object_set_inner(&store,&config,false,"CalendarEvent/set".into(),json!({"accountId":"a","ifInState":current,"update":{"e":{"sequence":sequence,"start":"2026-11-18T11:00:00"}}})).unwrap_err(),"invalidProperties");
+            }
+            assert!(journal::entries(&store, &scope).unwrap().is_empty());
+            local_object_set_inner(&store,&config,false,"CalendarEvent/set".into(),json!({"accountId":"a","ifInState":current,"sendSchedulingMessages":false,"update":{"e":{"sequence":5,"start":"2026-11-18T11:00:00"}}})).unwrap();
+            // Even the same server state is stale after a local edit.
+            assert_eq!(
+                local_object_set_inner(
+                    &store,
+                    &config,
+                    false,
+                    "CalendarEvent/set".into(),
+                    json!({"accountId":"a","ifInState":current,"destroy":["e"]})
+                )
+                .unwrap_err(),
+                "stateMismatch"
+            );
+        }
+        let store = Store::open(&path).unwrap();
+        let snapshot = calendar::read(&store, &scope).unwrap();
+        assert_eq!(snapshot.events["e"]["sequence"], 5);
+        assert_eq!(snapshot.events["e"]["start"], "2026-11-18T11:00:00");
+        assert_eq!(journal::entries(&store, &scope).unwrap()[0].status, "held");
+        // An individual cancellation preserves the series and prior overrides.
+        local_object_set_inner(&store,&config,false,"CalendarEvent/set".into(),json!({"accountId":"a","sendSchedulingMessages":false,"update":{"e":{"recurrenceOverrides/2026-11-18T11:00:00":{"excluded":true}}}})).unwrap();
+        let event = calendar::read(&store, &scope)
+            .unwrap()
+            .events
+            .remove("e")
+            .unwrap();
+        assert_eq!(event["sequence"], 5);
+        assert_eq!(
+            event["recurrenceOverrides"]["2026-11-18T11:00:00"]["excluded"],
+            true
+        );
+        assert_eq!(
+            event["recurrenceOverrides"]["2026-11-25T10:00:00"]["start"],
+            "2026-11-25T11:00:00"
+        );
+        let entry = journal::entries(&store, &scope).unwrap().remove(0);
+        assert_eq!(entry.calls[0].1["sendSchedulingMessages"], false);
+        assert_eq!(entry.calls[0].1["update"]["e"]["sequence"], 5);
+        local_object_set_inner(
+            &store,
+            &config,
+            false,
+            "CalendarEvent/set".into(),
+            json!({"accountId":"a","sendSchedulingMessages":false,"destroy":["e"]}),
+        )
+        .unwrap();
+        assert!(calendar::read(&store, &scope).unwrap().events.is_empty());
+        assert!(calendar::read(&store, "different-account")
+            .unwrap()
+            .events
+            .is_empty());
+    }
+
     #[test]
     fn every_write_kind_enforces_read_only_current_membership_and_account_rights() {
         let dir = tempfile::tempdir().unwrap();

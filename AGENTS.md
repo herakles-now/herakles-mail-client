@@ -57,3 +57,18 @@ The unreferenced test blob is left to server retention/cleanup. This exception
 does not authorize other live writes or a persistent change to read-only settings.
 
 
+
+The user additionally authorized a live calendar suite in this session: up to five
+new clearly synthetic test events in the personal default calendar, varied options
+(including move, all-day, recurrence and exclusions), with an invitation allowed
+only to mollument@gmail.com. The bounded suite uses a separate persistent receipt;
+never touch existing events, clear previous receipts, retry ambiguous writes or
+change persistent read-only settings. A scheduling invitation and cleanup
+cancellation may be sent only for the synthetic invited test event to that address.
+
+The user subsequently authorized exactly one additional synthetic event, provided
+its title is marked TEST, to finish option validation and offline/reconnect sync.
+Use the separate calendar-offline-options-attempt receipt, no additional mail,
+no changes to existing events, and delete only this acknowledged test event.
+The test must exercise durable offline queue/restart, reconnect review and
+approved transmission through the production synchronization worker.

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { readDesktopBlob } from './blobs';
 import { normalizeCalendarEventLike } from '@/lib/calendar-event-normalization';
 import { expandRecurringEvents } from '@/lib/recurrence-expansion';
 import { getEventStartDate, getEventEndDate } from '@/lib/calendar-utils';
@@ -59,6 +60,17 @@ export async function answerCalendar(methodCalls: OfflineMethodCall[], defaultAc
         args[key.slice(1)] = earlier.ids; delete args[key];
       }
       const account = String(args.accountId || defaultAccount);
+      if (method === 'CalendarEvent/parse') {
+        if (!Array.isArray(args.blobIds) || args.blobIds.some((blob: unknown) => typeof blob !== 'string' || !blob)) throw new Error('invalidArguments');
+        if (args.blobIds.length > 16) throw new Error('requestTooLarge');
+        if (args.properties != null && (!Array.isArray(args.properties) || args.properties.some((property: unknown) => typeof property !== 'string'))) throw new Error('invalidArguments');
+        // Parsing is read-only and uses the mail/file source account, which need
+        // not itself advertise calendars. Native code rechecks blob ownership.
+        for (const blob of new Set<string>(args.blobIds)) await readDesktopBlob(account, blob);
+        const result = await invoke<Record<string, any>>('local_calendar_parse', { accountId: account, blobIds: args.blobIds, properties: args.properties ?? null });
+        prior.set(`${id}:${method}`, result); responses.push([method, result, id]);
+        continue;
+      }
       if (method === 'CalendarEvent/set' && !readOnly) {
         const result = await invoke<Record<string, any>>('local_object_set', { method, args: { ...args, accountId: account } });
         snapshots.delete(account);
@@ -99,7 +111,7 @@ export async function answerCalendar(methodCalls: OfflineMethodCall[], defaultAc
       prior.set(`${id}:${method}`, result); responses.push([method, result, id]);
     } catch (error) {
       const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-      const type = ['invalidArguments','unsupportedFilter','unsupportedSort','invalidResultReference','serverUnavailable','accountNotFound','accountNotSupportedByMethod','forbidden','cannotCalculateChanges','unknownMethod'].includes(message) ? message : 'serverUnavailable';
+      const type = ['invalidArguments','requestTooLarge','serverFail','unsupportedFilter','unsupportedSort','invalidResultReference','serverUnavailable','accountNotFound','accountNotSupportedByMethod','stateMismatch','invalidProperties','notFound','forbidden','cannotCalculateChanges','unknownMethod'].includes(message) ? message : 'serverUnavailable';
       responses.push(['error', { type }, id]);
     }
   }

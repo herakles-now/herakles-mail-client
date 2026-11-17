@@ -20,6 +20,7 @@ import { ExternalRecipientConfirmHost } from '@/components/email/external-recipi
 import { usePathname } from './navigation';
 import { bootstrapBulwark, synchronizeBulwark } from './bootstrap';
 import { AccountSetup } from './AccountSetup';
+import { CacheSettings } from './CacheSettings';
 import { PendingChanges } from './PendingChanges';
 import type { Bootstrap } from './bootstrap';
 import '@/app/globals.css';
@@ -31,7 +32,7 @@ function Routes() {
   const surface = segments[localized ? 1 : 0];
   const rest = segments.slice(localized ? 2 : 1);
   switch (surface) {
-    case 'settings': return <SettingsApp linkSegments={rest} />;
+    case 'settings': return <div className="desktop-settings"><CacheSettings /><div className="desktop-settings-content"><SettingsApp linkSegments={rest} /></div></div>;
     case 'calendar': return <CalendarApp linkSegments={rest} />;
     case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice">Kontakte · Nur Lesen · Bearbeiten und Kontaktfotos sind noch nicht unterstützt.</div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
     case 'files': return <FilesApp linkSegments={rest} />;

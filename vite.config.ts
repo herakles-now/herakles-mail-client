@@ -10,6 +10,16 @@ export default defineConfig(({ mode }) => ({
     name: 'bulwark-desktop-sandbox',
     enforce: 'pre',
     transform(code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/components/email/calendar-invitation-banner.tsx')) {
+        const needle = '      {/* Content column */}';
+        const content = '      <div className="flex-1 min-w-0 space-y-2">';
+        if (code.split(needle).length !== 2 || code.split(content).length !== 2) throw new Error('Bulwark invitation integration changed upstream');
+        const method = "  const method = detectedMethod !== 'unknown' ? detectedMethod : rawIcsMethod;";
+        if (code.split(method).length !== 2) throw new Error('Bulwark invitation method detection changed upstream');
+        code = code.replace(method, "  const method = rawIcsMethod !== 'unknown' ? rawIcsMethod : detectedMethod;");
+        return `import { InvitationUpdate } from ${JSON.stringify(file('./src/desktop/InvitationUpdate.tsx').replaceAll('\\', '/'))};\n` + code.replace(content, `${content}
+        <InvitationUpdate incoming={parsedEvent} method={method} client={client} accountId={sharedMailAccount || client?.getCalendarsAccountId()} trusted={trustAssessment?.level === 'trusted' || trustAssessment?.reason === 'sender_mismatch'} />`);
+      }
       if (id.replaceAll('\\', '/').endsWith('/components/contacts/contact-detail.tsx')) {
         const needle = 'onClick={onEdit} className="gap-1.5 touch-manipulation"';
         if (code.split(needle).length !== 2) throw new Error('Bulwark contact detail integration changed upstream');

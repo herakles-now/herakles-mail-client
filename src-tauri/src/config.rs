@@ -75,6 +75,16 @@ impl TestConfig {
         Ok(config)
     }
     pub fn load() -> Result<Self, String> {
+        let mut config = Self::load_stored()?;
+        // A process-only safety switch must never enable writes or alter credentials.
+        config.read_only = effective_read_only(
+            config.read_only,
+            std::env::var_os("HERAKLES_FORCE_READ_ONLY").is_some(),
+        );
+        Ok(config)
+    }
+
+    fn load_stored() -> Result<Self, String> {
         let context = active_context();
         let slot = context
             .as_ref()
@@ -199,6 +209,10 @@ fn parse_read_only(value: Option<&str>) -> Result<bool, String> {
     }
 }
 
+fn effective_read_only(stored: bool, force: bool) -> bool {
+    stored || force
+}
+
 fn validate_url(value: &str) -> Result<Url, String> {
     let url = Url::parse(value).map_err(|_| "JMAP_SESSION_URL ist ungültig.".to_string())?;
     if url.scheme() != "https"
@@ -219,6 +233,14 @@ fn validate_url(value: &str) -> Result<Url, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_safety_switch_only_restricts_writes() {
+        assert!(effective_read_only(false, true));
+        assert!(effective_read_only(true, true));
+        assert!(effective_read_only(true, false));
+        assert!(!effective_read_only(false, false));
+    }
 
     #[test]
     fn read_only_is_default_and_invalid_configuration_never_enables_writes() {

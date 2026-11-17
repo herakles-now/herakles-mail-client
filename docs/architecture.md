@@ -1,6 +1,6 @@
 # Architektur: lokale Replik als Arbeitsgrundlage
 
-Stand: 15. November 2026. Die folgenden Abschnitte beschreiben den aktuellen
+Stand: 17. November 2026. Die folgenden Abschnitte beschreiben den aktuellen
 Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshistorie.
 
 ## Aktueller Überblick
@@ -23,47 +23,66 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
 - Kontakte und Adressbücher werden lesend über eine kontogetrennte native redb-Replik
   bereitgestellt. Suche, Details und freigegebene Adressbücher funktionieren offline.
 - Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
-  offline. Automatische Cachebereinigung fehlt.
+  offline. Das Downloadlimit ist pro Konto einstellbar; FIFO-Bereinigung entfernt alte
+  Downloads. Die Bereinigung lokaler Uploads bleibt offen.
+- Email/get projiziert Header, MIME-Teile und Textwerte lokal. Einmaliger Online-
+  Vollabgleich erneuert alte Repliken; abgeschnittene Textteile werden bis 8 MB
+  nachgeladen und groessere Teile bleiben als abgeschnitten markiert.
 - Offline-Aufträge benötigen beim Wiederverbinden eine Auswahl zur Übertragung.
   Reine Entwürfe zählen nicht als ausstehende Aktionen. Blockierte und unklare
   Aufträge werden durch eine pauschale Freigabe nicht erneut versendet.
-- JMAP_READ_ONLY ist standardmäßig aktiv. Die bestehende Live-Schreibfreigabe gilt
-  für Gelesen-/Sternänderungen, den reversiblen Flag-Test und den separat
-  begrenzten Upload fester 1-KiB-Testdaten. Versand-, Kalender-, FileNode- und
-  Verschiebetests benötigen eine eigene Freigabe
-  für echte Serveränderungen.
+- JMAP_READ_ONLY ist standardmäßig aktiv. Die begrenzten Kalender-Live-Tests
+  sind abgeschlossen; ihre dauerhaften Quittungen sperren eine Wiederholung.
+  Der zusätzliche TEST-Termin wurde nach fünf erfolgreichen Offline-/Reconnect-
+  Phasen gelöscht. Externe Einladungs-/Absagezustellung bleibt unbestätigt.
+- HERAKLES_FORCE_READ_ONLY erzwingt bei gesetzter Prozessvariable (unabhängig vom
+  Wert, auch bei leerem Wert oder false) lesenden Betrieb für geladene Konten.
+  Die Sperre verändert keine gespeicherten Zugangsdaten oder Nur-Lese-Einstellungen.
+  Zum Aufheben die Variable vor dem nächsten Appstart vollständig entfernen.
 
 ## Aktuelle Verifikation
 
-Am 15. November 2026 am aktuellen Arbeitsstand ausgeführt:
+Am 17. November 2026 am aktuellen Arbeitsstand ausgeführt:
 
-- `npm run build`: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
+- npm run build: erfolgreich, einschließlich TypeScript-Prüfung; Vite meldet
   große Bundles und teilweise zugleich statische und dynamische Imports.
-- `npm run check:native`: erfolgreich.
-- `npm run test:native`: 66 bestanden, acht Live-Tests regulär ignoriert.
-  Der separat gegatete 1-KiB-Upload-Live-Test wurde am 14. November erfolgreich ausgeführt.
-  Der Nur-Lese-Kontakttest wurde am 15. November zusätzlich erfolgreich ausgeführt.
-- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`: erfolgreich.
-- `npm exec playwright -- test` gegen Vite-Preview auf Port 1430:
-  fünf Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
+- npm run check:native und cargo build --manifest-path src-tauri/Cargo.toml:
+  erfolgreich; der abschließende Native-Check umfasst auch die Prozesssperre.
+- npm run test:native: 89 bestanden, 13 Live-Tests regulär ignoriert.
+- cargo fmt --manifest-path src-tauri/Cargo.toml -- --check: erfolgreich.
+- npm exec playwright -- test gegen Vite-Preview auf Port 1430:
+  acht Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
+- npm run test:jmap-audit: sieben Tests bestanden; npm run check:jmap erfolgreich.
+- node --test scripts/stage-release.test.mjs: drei Tests bestanden.
 
-Diese Prüfung hat keine echten Mails versendet oder Serverdaten verändert.
-Sie ersetzt keine native Funktionsprüfung auf Linux/macOS und keinen
-Live-Nachweis für Versand, Kalender- oder Dateiänderungen. Das Upstream-Submodul
-steht unverändert auf `03e7cd86f102bc66a589b7b02d49523b00ae633a`.
+Diese erneute Prüfung hat keine schreibenden Live-Tests ausgeführt. Die zuvor
+separat genehmigten Kalenderprüfungen und ihre Grenzen sind in
+[calendar-live-validation.md](calendar-live-validation.md) dokumentiert.
+Der zusätzliche Versuch, den aktuellen Build im echten Desktopfenster zu prüfen,
+konnte nicht abgeschlossen werden: Computer Use verweigerte den Zugriff auf
+Herakles Mail. Ein vollständiger App-Neustart mit Offline-Anzeige und anschließender
+Reconnect-Freigabe im nativen Fenster bleibt deshalb offen. Der erfolgreiche
+Offline-Live-Test prüft den Produktionsworker und redb-Neustart, keinen Fensterneustart.
+Linux/macOS sind ebenfalls nicht vollständig nativ validiert. Das Upstream-Submodul
+steht unverändert auf 03e7cd86f102bc66a589b7b02d49523b00ae633a.
 
 ## Nächste Arbeit
 
-1. Versand mit Anhängen und FileNode-Erstellung separat freigeben und live prüfen;
+1. Kalenderablauf im echten Desktopfenster einschließlich App-Neustart,
+   Offline-Anzeige und Reconnect-Freigabe prüfen. Keine verbrauchten Live-Quittungen
+   zurücksetzen oder bestehende Termine ändern.
+2. Versand mit Anhängen und FileNode-Erstellung separat freigeben und live prüfen;
    Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.
-2. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
+3. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
    durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
-3. Kontaktänderungen über ein dauerhaftes Journal anbinden; weitere lokale
+4. Kontaktänderungen über ein dauerhaftes Journal anbinden; weitere lokale
    JMAP-Methoden und Kontaktfotos portieren.
-4. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
-   unterstützen; Cachebereinigung und Speicherverwaltung ergänzen.
-5. Lokale Daten verschlüsseln, Linux/macOS vollständig prüfen und
-   Installationspakete, Signierung sowie Updates einrichten.
+5. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
+   unterstützen; Verwaltung lokaler Uploads ergänzen. Downloadlimits und
+   kontogetrennte FIFO-Bereinigung sind bereits implementiert.
+6. Lokale Daten verschlüsseln und Linux/macOS vollständig prüfen. Die vorhandene
+   Release-Staging-/CI-Grundlage um verifizierte Installer, Signierung und Updates
+   vervollständigen.
 
 ## Entwicklungshistorie
 
@@ -895,3 +914,324 @@ Neustart und einen Folgeabgleich erfolgreich geprüft. Der Test erzwingt unabhä
 von der gespeicherten Kontoeinstellung read_only und prüft vor dem Datenabruf,
 dass die beiden Set-Methoden lokal gesperrt sind. Keine Kontaktinhalte oder
 Zugangsdaten wurden protokolliert; es wurde nichts auf dem Server geändert.
+
+## Begrenzter nativer Downloadcache (16. November 2026)
+
+Bulwarks lib/offline/cache.ts dient als Vorlage fuer Speicherlimit, aelteste Eintraege zuerst und die Trennung von ausgehenden Daten. Die Rust-Portierung begrenzt weiterhin nur heruntergeladene Binaerdaten auf 256 MiB je Kontoscope, bei maximal 25 MiB pro Blob. Gezielt angeforderte Downloads verdraengen bei Platzmangel die zuerst gespeicherten Downloads atomar mit dem neuen Eintrag. Eine dauerhafte redb-Reihenfolge ueberlebt Neustarts; vorhandene Bloecke ohne Reihenfolge bleiben beim Oeffnen erhalten und werden bei Platzmangel zuerst verdraengt. Lesen und doppelte Schreibaufrufe erneuern das Alter nicht.
+
+Automatisches Vorladen verdraengt keine Eintraege, um wiederholte Verdraengungsdownloads beim Abgleich zu vermeiden. Mailreplik, JMAP-Checkpoints, Entwuerfe, Schreibjournal und lokale Uploads liegen ausserhalb dieser Bereinigung. Verdraengte Downloads sind offline nicht mehr verfuegbar und werden bei Bedarf online erneut geladen. Anders als Bulwark werden keine Nachrichtengruppen entfernt: Unsere redb-Replik bleibt die verbindliche Arbeitsgrundlage. Kein globales Speicherlimit, keine Verschluesselung, keine Uploadbereinigung und keine garantierte Verkleinerung der redb-Datei; freigegebene Seiten koennen wiederverwendet werden. Ein Einstellungsdialog fehlt weiterhin.
+
+Synthetische Tests pruefen dauerhafte FIFO-Reihenfolge, Kontotrennung, unveraenderliche Duplikate, Prefetch ohne Verdraengung, Ablehnung zu grosser Eintraege ohne Datenverlust sowie Migration des alten Downloadcache. Keine Live-Serverzugriffe erforderlich.
+
+## Einstellbarer Downloadcache (16. November 2026)
+
+In den Einstellungen steht oberhalb der originalen Bulwark-Ansicht der aufklappbare
+Bereich Offline-Speicher / Downloadcache. Er zeigt je Konto der aktuellen lokalen
+Sitzung Downloadbytes, Eintragszahl und Limit. Die Anzeige umfasst nicht die gesamte
+redb-Datei oder lokale Uploads. Die Belegung kann lokal aktualisiert werden.
+
+Das Limit ist in ganzen MiB zwischen 25 und 4096 einstellbar (Standard 256).
+Rust validiert Kontozugehoerigkeit und Wertebereich. Limit und gegebenenfalls
+notwendige FIFO-Bereinigung werden in derselben redb-Transaktion geschrieben.
+Neue Downloads lesen das Limit innerhalb ihrer Schreibtransaktion; Prefetch
+verdraengt weiterhin keine Eintraege. Die Einstellung funktioniert offline und
+im Nur-Lese-Modus. Eine Verkleinerung zeigt vor dem Speichern den Hinweis auf
+sofortiges Entfernen alter Downloads und deren fehlende Offline-Verfuegbarkeit.
+Keine Aenderung betrifft den Server, Entwuerfe, Schreibjournal oder Uploadablage.
+
+Native Tests pruefen Grenzwerte, Neustart, Kontotrennung, sofortige Bereinigung,
+Vergroesserung und Anwendung des gespeicherten Limits auf Download und Prefetch.
+Die Browserpruefung nutzt synthetische Konten und nachgebildetes IPC, prueft
+Speichern/Wiederladen und zeigt den Bereich auch bei 640 Pixeln Breite.
+
+## Bulwark-Aufrufe gegen Stalwart-Semantik (16. November 2026)
+
+Die erste gezielte Angleichung betrifft Email/query. Ausgangspunkte sind Bulwarks
+getEmails, getTagCounts und buildListSort im unveraenderten Submodul
+(lib/jmap/client.ts und lib/message-list-order.ts). Diese Funktionen kombinieren
+Mailbox-/Keywordfilter, mehrstufige Sortierung, Position/Limit und Ergebnisreferenzen
+auf Email/get und Thread/get. Die bestehenden Abrufe im Rust-Worker bleiben bestehen;
+diese Stufe erweitert die lokale Beantwortung, ohne zusaetzliche Netzwerkpfade.
+
+Als Serverreferenz wurde Stalwart-Commit
+e7cde9b3fac32d2a254ef782efec56f2373ec5d4 festgehalten:
+- crates/jmap/src/email/query/filter.rs: Thread-Keywordfilter ueber sichtbare Nachrichten.
+- crates/jmap/src/api/query.rs: negative Positionen, Anchor-Offsets und Antwortposition.
+
+email_query.rs validiert unterstuetzte Filterformen und Queryargumente vor der
+Auswertung, auch bei leerer Replik oder nicht passenden Nachrichten. Unbekannte
+Filter ergeben unsupportedFilter; falsche Werttypen invalidArguments.
+allInThreadHaveKeyword, someInThreadHaveKeyword und noneInThreadHaveKeyword werden
+ueber alle lokal sichtbaren Nachrichten desselben Kontos und Threads ausgewertet,
+bevor ein zusaetzlicher Mailboxfilter oder collapseThreads die Ergebnisliste begrenzt.
+Sortierkomparatoren verwenden bei fehlendem isAscending den Standard true.
+Negative Positionen zaehlen vom Ende der gefilterten/sortierten/kollabierten Liste;
+Anchor-Offsets werden danach angewendet. Ein Offset hinter dem Listenende liefert
+keine IDs und ohne Anchor die Antwortposition 0 entsprechend Stalwarts Builder.
+
+Es handelt sich um eine an redb angepasste Implementierung nach Referenzcode,
+nicht um die Einbindung von Stalwarts gesamtem Server. Die Referenz ist kein
+Nachweis fuer die Version des betriebenen Servers. Threadfilter koennen nur den
+lokal synchronisierten, lesbaren Bestand beruecksichtigen. Die Auswertung arbeitet
+weiterhin im Speicher; kein Stalwart-Suchindex wurde portiert. Volltextsuche bleibt
+eine vereinfachte lokale Teilzeichenfolgensuche, Datumsfilter verwenden weiterhin
+Zeichenkettenvergleich; vollstaendige Such-, Datums- und Sortierparitaet ist offen.
+
+Synthetische Tests pruefen die redb-Replik nach Neustart, Threadfilter ueber
+Mailboxgrenzen, Kontotrennung, verschachtelte Filter, negative Positionen,
+Anchor/Thread-Collapse, leere Seiten und Fehler unabhaengig vom Datenbestand.
+Es wurden keine Live-Schreibtests oder Serveraenderungen ausgefuehrt.
+
+## Vollstaendige statische JMAP-Bestandsaufnahme (16. November 2026)
+
+Die [Kompatibilitaetsmatrix](jmap/matrix.md) ordnet die erfassten Bulwarkmethoden
+Stalwart-Quellreferenzen, lokalen Implementierungen und konkreten Testbelegen zu.
+[Pflege und Grenzen](jmap/README.md) beschreiben den reproduzierbaren AST-Abgleich.
+Argumente, Eigenschaften, Filter, Sortierung, Ergebnisreferenzen, dynamische
+Methoden und HTTP-/Push-Transporte stehen maschinenlesbar in jmap/inventory.json.
+Neue Methoden, unbewertete dynamische Kontexte oder veraltete Artefakte lassen
+check:jmap fehlschlagen. Die Releasepruefung fuehrt diesen Check und die Tests
+des Generators aus. Die Bestandsaufnahme implementiert die ausgewiesenen
+Funktionsluecken nicht und behauptet keine vollstaendige Protokollparitaet.
+
+## Email/get: Standardprojektion und vollstaendigere Offline-Daten (16. November 2026)
+
+email_get.rs beantwortet Email/get ueber den nativen Batchresponder aus der lokalen
+Mailreplik. Die Standard-Eigenschaftsliste folgt Stalwarts email/get.rs; headers
+und bodyStructure werden nur auf ausdrueckliche Anforderung ausgegeben. id bleibt
+immer enthalten, unbekannte Eigenschaften und falsche Argumenttypen werden auch
+bei leerem Bestand abgelehnt. ids:null liest den lokalen Bestand; explizite IDs
+werden geordnet dedupliziert, fehlende/in diesem Konto nicht vorhandene IDs stehen
+in notFound. Interne gespeicherte Felder gelangen nicht durch die Standardprojektion.
+
+BodyProperties werden rekursiv auf bodyStructure, textBody, htmlBody und attachments
+angewendet. subParts bleibt rekursiv vorhanden. BodyValues werden nur entsprechend
+fetchTextBodyValues, fetchHTMLBodyValues oder fetchAllBodyValues ausgegeben; ohne
+Fetchoption ist die Map leer. maxBodyValueBytes begrenzt UTF-8-Bytes je Teil. Die
+Plaintext-/HTML-Kuerzung stammt direkt aus Stalwarts message/body.rs und erhaelt
+isEncodingProblem sowie bereits vorhandene isTruncated-Markierungen.
+
+Headernamen werden ohne Beachtung der ASCII-Grossschreibung gesucht. Ohne all gilt
+das letzte Vorkommen, mit all bleiben Reihenfolge und Mehrfachwerte erhalten.
+Unterstuetzt sind asRaw, asText, asAddresses, asGroupedAddresses, asMessageIds,
+asDate und asURLs sowie root-/part-headers. Die Verarbeitung verwendet Stalwart
+Labs' mail-parser 1.0 mit full_encoding; Datumsformen werden auf UTC normalisiert.
+Die Stalwart-Referenz und Lizenzhinweise stehen in NOTICE und der JMAP-Matrix.
+
+Der Worker fordert nun sender, root-headers und Part-headers sowie alle textuellen
+BodyValues an. Abgeschnittene Teile werden je betroffener Nachricht einmal mit
+maxBodyValueBytes=8000000 nachgeladen. Antwortkonto/ID-Abdeckung der Basisauswahl,
+Nachrichten-ID, Bodywert-Abdeckung und unveraenderter Email-State des Nachladens
+werden vor der Veroeffentlichung geprueft. Fehler oder Zustandswechsel lassen den
+alten Email-Checkpoint und Datenbestand erhalten. Abbruch vor der nachfolgenden
+Snapshotbestaetigung veroeffentlicht ebenfalls keine halbe Replik.
+
+Ein persistenter, kontogetrennter Projektionsmarker erzwingt beim naechsten
+Online-Mailabgleich einmalig einen vollstaendigen Ersatzsnapshot fuer alte Repliken.
+Die alte Replik bleibt bis zum erfolgreichen Commit lesbar. Der Marker wird erst
+danach gesetzt; ein Absturz davor fuehrt hoechstens zu einem erneuten Vollabgleich.
+Lokale Entwuerfe, Flags und Schreibabsichten bleiben erhalten. Danach nutzt der
+Worker wieder Deltas. Vor dem Upgrade fehlen alte Header/Textdaten offline weiterhin.
+
+Grenzen: Teile oberhalb von 8 MB bleiben ehrlich als abgeschnitten markiert;
+maxBodyValueBytes=0 bedeutet keine weitere lokale Kuerzung, aber keinen Netzabruf.
+Der Responder parst keine Roh-MIME-Blobs neu, sondern projiziert die vom Server
+synchronisierten Strukturen. Optionale Objektmetadaten-Erweiterungen bleiben offen.
+Die Replik liegt weiterhin unverschluesselt vor; vollstaendige Texte und Header
+vergroessern ihre Datenmenge. Kein Paging der gesamten lokalen Replik hinzugefuegt.
+
+Synthetische native Tests pruefen Standard-/Teilprojektion, IDs/notFound,
+Kontotrennung und Neustart, rekursive MIME-Teile, alle Fetchmodi, Headerformen und
+Mehrfachwerte, UTF-8-/HTML-Kuerzung sowie Bulwarks Query/Get/Thread-Batch mit
+Ergebnisreferenzen. Workerpruefungen decken die einmalige Datenmigration,
+Nachladen, Rueckkehr zu Deltas und Fehler/Zustandsrennen ohne Teilveroeffentlichung ab.
+Es wurden keine echten Nachrichten gelesen, versendet oder Serverobjekte geaendert.
+
+## Korrektur der Entwurfslistenanzeige (16. November 2026)
+
+Alte lokale Entwuerfe enthielten teilweise keine threadId. Die Daten konnten
+lokal geladen werden, die originale Bulwark-Liste brach jedoch beim Rendern ab
+und zeigte die allgemeine Fehlermeldung fuer die Nachrichtenliste.
+Die fehlende Threadzuordnung wurde mit einem synthetischen Browserfall reproduziert.
+
+Die native lokale Mailansicht ergaenzt fuer lokale Entwuerfe ohne nichtleere
+threadId deren eigene id als stabilen kontogetrennten Thread. Unterschiedliche
+Entwuerfe werden dadurch nicht zusammengefasst. Bestehende Threadzuordnungen
+bleiben erhalten. Diese Kompatibilitaetsprojektion veraendert die alten
+redb-Datensaetze nicht und erfindet fuer alte Entwuerfe keine Datumswerte.
+Neue lokale Entwuerfe erhalten beim Speichern eine Threadzuordnung und, wenn
+receivedAt fehlt oder ungueltig ist, einen lokalen Erstellungszeitstempel;
+sentAt wird dadurch nicht gesetzt. Der Upstream bleibt unveraendert.
+
+Der native Regressionstest prueft alte Null-/Leer-Threadwerte, Kontotrennung,
+Neustart, vorhandene Threadzuordnungen und unveraenderte persistierte Altdaten.
+Der Browsertest navigiert vom Posteingang zu einem lokalen Altentwurf ohne
+Datum und wieder zurueck, mit der vom nativen Responder gelieferten Thread-ID.
+Keine Diagnose-Probes, zusaetzlichen Mailabrufe oder Konsoleninterzeptoren bleiben
+im Bootstrap zurueck. Es wurden keine Serverobjekte veraendert.
+
+
+### Lokale Einladungsverarbeitung
+
+CalendarEvent/parse wird im Desktopadapter vor der allgemeinen Sperre unbekannter
+Parse-Methoden behandelt. Der Rust-Synchronisierungspfad holt fehlende ICS-Blobs;
+die Umwandlung selbst liest ausschliesslich kontogetrennte, aktuell referenzierte
+redb-Blobs und verwendet Stalwart Labs calcard 0.3.14. Ein Mailkonto braucht zum
+Lesen seiner Einladung keine Kalender-Capability. Kalenderkonvertierung,
+Zeitzonen, Wiederholungen und Teilnehmer werden durch calcard bereitgestellt.
+Metadaten und Eigenschaftsauswahl folgen dem Stalwart-Parse-Responder.
+Grenzen: 16 Blobs, 2 MiB je Blob, 256 Eintraege. Fehlerhafte und fehlende Blobs
+werden als notParsable bzw. notFound zurueckgegeben. Parsing legt keine Termine
+an und versendet keine Zusagen.
+
+Drei native Regressionstests pruefen Konvertierung, Fehler und Autorisierung
+sowie Offline-Neustart und Kontotrennung. Die synthetischen Browsertests pruefen
+die originale Einladungsanzeige mit dem nativen Adapter. Stand dieser Erweiterung:
+81 native Tests erfolgreich, neun explizit ausgeblendete Live-Tests.
+Eine gezielte lesende Pruefung der angefragten Scadix-Einladung bestaetigte einen
+bereits vorhandenen Termin im persoenlichen Standardkalender: UID, Start,
+Zeitzone und Dauer stimmten ueberein. Es wurde kein Duplikat angelegt und keine
+RSVP gesendet. Der zugehoerige ignorierte Preflight-Test benoetigt explizite
+Profilauswahl und JMAP_CALENDAR_PREFLIGHT=scadix; er erzwingt read-only.
+
+
+### Versionsschutz bei Kalenderaenderungen und Absagen
+
+Der unveraenderte Bulwark-Banner verwendet UID, SEQUENCE, Recurrence-ID und
+Absender-/Organisatorpruefung fuer Absagen. Seine originale Absageplanung wird
+synthetisch getestet: alte Absagen, ganze Serien, einzelne Vorkommen mit
+Zeitzonenumrechnung und Erhalt anderer Serienausnahmen.
+Die native CalendarEvent/set-Grenze vergleicht ifInState jetzt mit dem gesamten
+lokalen Zustand (Event-State, Calendar-State und Journalrevision). Ein blosses
+local-calendar:-Praefix genuegt nicht. Explizite sequence-Updates muessen
+nichtnegative Zahlen sein und duerfen die gespeicherte Version nicht absenken.
+Aenderungen ohne sequence behalten ihre bisherige Version; der Schutz ersetzt
+keine iTIP-Absenderauthentifizierung. Die UI erhaelt stateMismatch und
+invalidProperties unverfaelscht zurueck.
+
+Die getrennte Abfrage fuer recurrenceOverrides muss dieselben vorhandenen und
+fehlenden IDs wie die Hauptabfrage enthalten, mit genau einer Zeile je vorhandenem Termin. Stalwart laesst leere optionale
+Override-Eigenschaften weg; diese werden nach ID-/Zustandspruefung als null
+behandelt. Vorhandene Werte muessen Objekt oder null sein. Bei fehlenden, doppelten oder
+fremden Objekten bleibt der zuvor gespeicherte Snapshot erhalten. Tests decken
+abgebrochene Updates, Neustart, dauerhaft gehaltene Verschiebungen, Ausschluss
+eines Vorkommens und Loeschen ohne Scheduling-Nachrichten ab. Es wurden keine
+Live-Kalenderaenderungen vorgenommen. Automatische Uebernahme einer eingehenden
+REQUEST-Aktualisierung aus der Mail wird hierdurch nicht neu implementiert;
+Stalwarts vorhandene Scheduling-Verarbeitung und Bulwarks Aktionen bleiben
+massgeblich.
+
+
+### Einladungsaktualisierung und belastbare Teilnahmeantworten
+
+Der Mailabgleich laeuft vor dem Kalenderabgleich. Kalenderdeltas uebernehmen
+Termine nur, wenn der Zustand von CalendarEvent/get mit dem newState der
+Aenderungsabfrage uebereinstimmt. Ein synthetischer Test prueft Verschiebung,
+Serienausschluss, Loeschung, konkurrierende Version und Offline-Neustart.
+
+Ein gepruefter Build-Transform ergaenzt den unveraenderten Bulwark-Banner um
+InvitationUpdate. METHOD aus dem ICS hat Vorrang vor heuristischer Erkennung
+anhand der Teilnehmer. Der lokale Status kommt ausschliesslich aus dem nativen,
+kontogetrennten redb-Snapshot, auch fuer Termine ausserhalb der sichtbaren
+Kalenderspanne. Angezeigt werden aktuelle, veraltete, widerspruechliche und
+neuere Einladungen. Ein hoeherer SEQUENCE-Wert erlaubt nach ausdruecklichem
+Klick das Vormerken der Terminangaben eines Einzeltermins. UID muss eindeutig
+sein; Organisator muss mit dem vorhandenen Termin uebereinstimmen. Die
+originale Bulwark-Herkunftspruefung muss trusted melden oder einen bestaetigten
+abweichenden Absender (sender_mismatch). Fehlende Authentifizierung und
+Organisatorwechsel erlauben keine Uebernahme. Serientermine/-instanzen bleiben
+in diesem manuellen Uebernahmepfad gesperrt; deren Scheduling sowie die originale
+Absageplanung werden weiterhin von Stalwart/Bulwark behandelt.
+
+Der gezielte Patch laesst Teilnehmerantworten, Kalenderzuordnung und persoenliche
+Erinnerungen unveraendert. ifInState bindet ihn an die zuvor gelesene lokale
+Revision. sendSchedulingMessages=false verhindert eine automatische RSVP.
+Die originalen Vorher-/Nachher-Plugin-Hooks werden mit Bulwarks Eventprojektion
+benutzt. Native Rechte und Nur-Lese-Modus werden erneut geprueft. Die Anzeige
+bezeichnet eine vorgemerkte Aenderung als lokal; Ablehnungen und unklare
+Uebertragungen werden im bestehenden Aenderungsdialog behandelt.
+
+RSVP uebernimmt weiterhin Bulwarks originale Aktionen. Ein Offline-RSVP, das
+mit einem frueheren stillen Update oder einer lokalen Terminanlage verschmilzt,
+behaelt sendSchedulingMessages=true; spaetere stille Bearbeitungen loeschen
+diesen Auftrag nicht. Ein Journalauftrag gilt nur bei Bestaetigung genau
+seines Objekt-/Erstellungsschluessels und vorhandenem newState als angenommen.
+Widerspruechliche oder fremde Bestaetigungen werden uncertain, definitive
+Ablehnungen blocked. stateMismatch, fehlende Schreibrechte und geloeschte
+Objekte erhalten verstaendliche Meldungen ohne rohe Serverantworten.
+
+Stand: 87 native Tests erfolgreich, zehn bewusst ausgeblendete Live-Tests.
+Acht Desktoptests pruefen unter anderem die originale RSVP-Logik fuer Zusage,
+Vorbehalt und Absage, Absender-/Organisatorunterschiede, Nur-Lese-Anzeige,
+Vormerken einer Verschiebung offline, Konfliktmeldung und Vermeidung einer
+Teilnahmeantwort beim reinen Uebernehmen von Terminangaben.
+Der neue live_calendar_lifecycle_roundtrip ist vorbereitet, aber nicht gelaufen.
+Sein genauer Umfang und die erforderliche separate Freigabe stehen in
+calendar-live-validation.md. Echte RSVP-Zustellung wird damit nicht nachgewiesen.
+
+
+### Live-Kalenderpruefung vom 17. November 2026
+
+Der Benutzer autorisierte bis zu fuenf synthetische Termine und eine Einladung
+an mollument@gmail.com. live_calendar_five_event_suite erzeugte genau fuenf
+Termine: Einzeltermin, Ganztag, woechentliche Serie, privater Termin mit
+Erinnerung sowie eingeladenen Termin. Alle fuenf Create-Antworten wurden bestaetigt.
+Beim ersten Replikationsabgleich brach der Lauf ab, bevor die geplanten Updates
+fuer Verschiebung, Serienausnahme und Verfuegbarkeit ausgefuehrt wurden.
+Die abschliessende Bereinigung bestaetigte fuer alle fuenf ausschliesslich neu
+erzeugten UID-/ID-Paare die Loeschung und anschliessendes notFound. Fuer den
+eingeladenen Termin wurden sendSchedulingMessages=true bei Anlage und Loeschung
+vom Server angenommen. Die externe Gmail-Zustellung wurde nicht nachgewiesen.
+
+Gefundener Kompatibilitaetsfehler: Stalwart liefert leere recurrenceOverrides
+nicht als null, sondern laesst die Eigenschaft trotz expliziter Auswahl weg.
+Der lokale Responder akzeptiert dies jetzt nach vollstaendiger ID-/State-Pruefung
+als null. Fehlende ganze Zeilen, doppelte IDs und ungueltige vorhandene Werte
+bleiben Fehler. Ein Regressionstest und ein ausschliesslich lesender erneuter
+Live-Abgleich in temporaeres redb bestanden. Der schreibende Lauf wurde nicht
+wiederholt; seine dauerhafte Quittung bleibt unveraendert erhalten.
+Stand: 88 native Tests erfolgreich, zwoelf ignorierte Live-Tests. Die geplanten
+Optionen Verschiebung/Serienausnahme/Verfuegbarkeitswechsel sowie echte RSVP-
+Zustellung haben weiterhin keinen vollstaendigen Live-Nachweis.
+
+
+### Erfolgreicher Offline-/Reconnect-Live-Test mit einem TEST-Termin
+
+Nach zusaetzlicher ausdruecklicher Freigabe wurde genau ein weiterer Termin mit
+Titel `TEST Herakles - Offline- und Kalenderoptionen` erzeugt und wieder geloescht.
+Der ignorierte Test `live_calendar_offline_options_roundtrip` verwendet die native
+Schreibvalidierung, denselben Produktions-Worker wie sync_pending_changes und
+eine temporaere redb-Datenbank. Das Gate lautet
+JMAP_CALENDAR_TEST=one-test-offline-options; die dauerhafte separate Quittung ist
+.cache/calendar-offline-options-attempt.json. Fruehere Quittungen bleiben erhalten.
+
+Alle fuenf Phasen bestanden am 17. November 2026:
+
+1. Offline-Anlage mit sichtbarer TEST-Markierung.
+2. Offline-Verschiebung, privat/belegt und Erinnerung 15 Minuten vorher.
+3. Woechentliche Serie mit drei Vorkommen und Ausschluss eines Vorkommens.
+4. Umstellung auf Ganztag, frei, ohne verbleibende Serienregel.
+5. Offline-Loeschung und bestaetigte Entfernung auf dem Server.
+
+In jeder Phase: Netzwerkmodus deaktivieren, Aenderung nativ vormerken, Worker
+im Offline-Modus abweisen, redb schliessen und wieder oeffnen, lokale Darstellung
+und held-Auftrag pruefen. Beim Wiederverbinden bleiben die Auftraege bis zur
+gezielten Freigabe gehalten. Danach uebertraegt der echte Worker den Auftrag;
+ein zweiter Worker-Lauf uebertraegt nichts erneut. Anschliessender lesender
+Serverabgleich bestaetigt die Optionen und raeumt den bestaetigten Journalauftrag
+ab. UID-Abfragen pruefen auf genau einen Termin bzw. nach Loeschung keinen.
+Kein Abschalten des Betriebssystemnetzes: geprueft wurde der native Offline-Modus
+und die dauerhafte Queue mit Neustart der lokalen redb-Ablage, keine komplette
+Neuanmeldung des Desktopfensters. Der Rueckabgleich benutzt eine getrennte strikt
+lesende Verbindung als Prueforakel.
+
+Die Produktion wurde nur zur Testbarkeit aufgeteilt: Der IPC-Handler behaelt
+Netzwerkpruefung und SyncGate und ruft sync_pending_changes_inner auf. Dieser
+Worker erzwingt die Netzwerksperre nochmals und verwendet die explizit uebergebene
+native Konfiguration; Zugangsdaten werden weder in JS noch in Testausgaben
+gegeben. Gespeicherte Nur-Lese-Einstellungen wurden nicht geaendert. Es wurden
+keine Teilnehmer und keine Scheduling-Nachrichten verwendet. Testtermin geloescht,
+alle fuenf Phasen und Cleanup bestaetigt. Die externe Zustellung der vorherigen
+Einladung/Absage an Gmail bleibt davon unabhaengig unbestaetigt.
+Stand: 88 native Standardtests erfolgreich, 13 bewusst ignorierte Live-Tests;
+der zusaetzlich explizit gestartete Offline-Live-Test bestand.

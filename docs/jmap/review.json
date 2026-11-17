@@ -1,0 +1,1389 @@
+{
+  "methods": {
+    "AddressBook/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "pub(crate) fn answer("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/addressbook/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+        }
+      ],
+      "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung."
+    },
+    "AddressBook/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const rejectContactWrite"
+        },
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "pub(crate) fn answer("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/addressbook/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+        }
+      ],
+      "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung."
+    },
+    "Blob/copy": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/blob/copy.rs"
+      ],
+      "tests": [],
+      "limitations": "JMAP-Blobmethode nicht portiert. Native HTTP-Downloads/Uploads und redb-Cache sind ein getrennter, teilweise implementierter Pfad."
+    },
+    "Blob/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/blob/get.rs"
+      ],
+      "tests": [],
+      "limitations": "JMAP-Blobmethode nicht portiert. Native HTTP-Downloads/Uploads und redb-Cache sind ein getrennter, teilweise implementierter Pfad."
+    },
+    "Calendar/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "export async function answerCalendar("
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "pub async fn synchronize("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn calendar_snapshot_survives_offline_restart_and_failed_delta(",
+          "name": "calendar_snapshot_survives_offline_restart_and_failed_delta"
+        }
+      ],
+      "limitations": "TypeScript beantwortet native redb-Snapshots; Kalender-Rekurrenz clientseitig. Filter, Sortierung, Fenster, Rechte und gemischte Batches nur Teilumfang. Testbeleg gilt fuer Snapshot-Persistenz/Worker, nicht fuer jede TS-Queryoption."
+    },
+    "Calendar/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "CalendarEvent/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "export async function answerCalendar("
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "pub async fn synchronize("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn calendar_snapshot_survives_offline_restart_and_failed_delta(",
+          "name": "calendar_snapshot_survives_offline_restart_and_failed_delta"
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn incomplete_override_reads_never_replace_the_saved_meeting(",
+          "name": "incomplete_override_reads_never_replace_the_saved_meeting"
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn scheduling_delta_moves_and_cancels_meetings_without_mixing_states(",
+          "name": "scheduling_delta_moves_and_cancels_meetings_without_mixing_states"
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn omitted_optional_overrides_are_defaulted_only_for_verified_rows(",
+          "name": "omitted_optional_overrides_are_defaulted_only_for_verified_rows"
+        }
+      ],
+      "limitations": "TypeScript beantwortet native redb-Snapshots; Kalender-Rekurrenz clientseitig. Filter, Sortierung, Fenster, Rechte und gemischte Batches nur Teilumfang. Testbeleg gilt fuer Snapshot-Persistenz/Worker, nicht fuer jede TS-Queryoption."
+    },
+    "CalendarEvent/parse": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "export async function answerCalendar("
+        },
+        {
+          "file": "src-tauri/src/calendar_parse.rs",
+          "anchor": "pub async fn local_calendar_parse("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event/parse.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/calendar_parse.rs",
+          "anchor": "fn stalwart_calcard_parses_timezone_recurrence_participants_and_property_selection(",
+          "name": "stalwart_calcard_parses_timezone_recurrence_participants_and_property_selection"
+        },
+        {
+          "file": "src-tauri/src/calendar_parse.rs",
+          "anchor": "fn parse_returns_not_parsable_and_not_found_without_panics_or_contents_in_errors(",
+          "name": "parse_returns_not_parsable_and_not_found_without_panics_or_contents_in_errors"
+        },
+        {
+          "file": "src-tauri/src/calendar_parse.rs",
+          "anchor": "fn cached_invitation_parses_offline_after_restart_and_requires_current_mail_reference(",
+          "name": "cached_invitation_parses_offline_after_restart_and_requires_current_mail_reference"
+        }
+      ],
+      "limitations": "Lokales calcard-Parsing autorisierter redb-Blobs; maximal 16 Blobs, 2 MiB je Blob und 256 Eintraege. Keine automatische Terminaufnahme oder RSVP; keine vollstaendige Serverparitaet."
+    },
+    "CalendarEvent/query": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "export async function answerCalendar("
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "pub async fn synchronize("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event/query.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn calendar_snapshot_survives_offline_restart_and_failed_delta(",
+          "name": "calendar_snapshot_survives_offline_restart_and_failed_delta"
+        }
+      ],
+      "limitations": "TypeScript beantwortet native redb-Snapshots; Kalender-Rekurrenz clientseitig. Filter, Sortierung, Fenster, Rechte und gemischte Batches nur Teilumfang. Testbeleg gilt fuer Snapshot-Persistenz/Worker, nicht fuer jede TS-Queryoption."
+    },
+    "CalendarEvent/set": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "if (method === 'CalendarEvent/set' && !readOnly)"
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "fn local_object_set_inner("
+        },
+        {
+          "file": "src/desktop/invitation-updates.ts",
+          "anchor": "export function planInvitationUpdate("
+        },
+        {
+          "file": "src/desktop/InvitationUpdate.tsx",
+          "anchor": "export function InvitationUpdate("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/journal.rs",
+          "anchor": "fn calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names(",
+          "name": "calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names"
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "fn calendar_versions_reject_stale_state_and_keep_changes_durable(",
+          "name": "calendar_versions_reject_stale_state_and_keep_changes_durable"
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "fn calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results(",
+          "name": "calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results"
+        },
+        {
+          "file": "src-tauri/src/journal.rs",
+          "anchor": "fn folded_calendar_reply_keeps_scheduling_request_across_restart(",
+          "name": "folded_calendar_reply_keeps_scheduling_request_across_restart"
+        },
+        {
+          "file": "src-tauri/src/calendar_roundtrip.rs",
+          "anchor": "fn live_calendar_offline_options_roundtrip(",
+          "name": "live_calendar_offline_options_roundtrip"
+        }
+      ],
+      "limitations": "Dauerhaftes Journal, exakte lokale Zustandspruefung, kontogetrennte Ueberlagerung und Objektbestaetigung; gezielte Einladungsaktualisierung nur fuer einzelne eindeutig zugeordnete Termine. Keine Kalenderverwaltung. Live-Aenderungen nicht freigegeben/nachgewiesen; separat gesperrter synthetischer Lifecycle-Test vorbereitet."
+    },
+    "CalendarEventNotification/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event_notification/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "CalendarEventNotification/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event_notification/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "CalendarEventNotification/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/calendar_event_notification/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "ContactCard/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "pub(crate) fn answer("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/contact/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+        }
+      ],
+      "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung."
+    },
+    "ContactCard/query": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "pub(crate) fn answer("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/contact/query.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+        }
+      ],
+      "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung."
+    },
+    "ContactCard/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const rejectContactWrite"
+        },
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "pub(crate) fn answer("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/contact/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+        }
+      ],
+      "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung."
+    },
+    "Core/echo": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/api/request.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Email/changes": {
+      "status": "fallback",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "\"Email/changes\" | \"Email/queryChanges\""
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/changes/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "fn paginated_changes_remove_destroyed_objects_and_advance_each_page(",
+          "name": "paginated_changes_remove_destroyed_objects_and_advance_each_page"
+        }
+      ],
+      "limitations": "Lokaler Responder liefert cannotCalculateChanges; Bulwark muss voll neu lesen. Rust-Worker nutzt Server-Email/changes separat. Test prueft den Worker, nicht lokale Deltas."
+    },
+    "Email/copy": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/copy.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Email/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/email_get.rs",
+          "anchor": "pub fn answer("
+        },
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "async fn get_emails("
+        },
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "pub async fn synchronize_projected_with_policy("
+        },
+        {
+          "file": "src-tauri/src/replica.rs",
+          "anchor": "pub fn local_mail("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/get.rs",
+        "crates/email/src/message/body.rs",
+        "crates/email/src/message/jmap/body.rs",
+        "crates/email/src/message/jmap/header.rs",
+        "crates/email/src/message/jmap/mod.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/email_get.rs",
+          "anchor": "fn projection_defaults_ids_validation_and_offline_isolation(",
+          "name": "projection_defaults_ids_validation_and_offline_isolation"
+        },
+        {
+          "file": "src-tauri/src/email_get.rs",
+          "anchor": "fn body_modes_recursive_projection_and_utf8_truncation(",
+          "name": "body_modes_recursive_projection_and_utf8_truncation"
+        },
+        {
+          "file": "src-tauri/src/email_get.rs",
+          "anchor": "fn header_forms_duplicates_case_and_missing_values_use_stalwart_parser(",
+          "name": "header_forms_duplicates_case_and_missing_values_use_stalwart_parser"
+        },
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "fn projection_upgrade_hydrates_headers_and_bodies_once_and_survives_restart(",
+          "name": "projection_upgrade_hydrates_headers_and_bodies_once_and_survives_restart"
+        },
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "fn failed_body_upgrade_keeps_old_checkpoint_and_requires_another_complete_snapshot(",
+          "name": "failed_body_upgrade_keeps_old_checkpoint_and_requires_another_complete_snapshot"
+        },
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn bulwark_email_get_batch_projects_headers_and_mime_from_redb_offline(",
+          "name": "bulwark_email_get_batch_projects_headers_and_mime_from_redb_offline"
+        },
+        {
+          "file": "src-tauri/src/replica.rs",
+          "anchor": "fn legacy_drafts_have_distinct_stable_threads_without_rewriting_missing_dates(",
+          "name": "legacy_drafts_have_distinct_stable_threads_without_rewriting_missing_dates"
+        }
+      ],
+      "limitations": "Standardprojektion, Headerformen ueber mail-parser, MIME-bodyProperties und BodyValues-Fetchoptionen implementiert. Worker erneuert alte Repliken und laedt abgeschnittene Textteile bis 8 MB je Teil nach. Groessere Teile bleiben als abgeschnitten markiert. Nur lokal synchronisierte Daten; optionale Metadaten-Erweiterungen und Roh-MIME-Neuparsing sind nicht enthalten. Kein neuer Live-Nachweis. Alte lokale Entwuerfe ohne threadId erhalten beim Lesen eine stabile Threadzuordnung ohne Aenderung des gespeicherten Altentwurfs."
+    },
+    "Email/import": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/import.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Email/query": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn answer_read("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/query.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn query_contract_matches_thread_filters_and_windows_after_restart(",
+          "name": "query_contract_matches_thread_filters_and_windows_after_restart"
+        }
+      ],
+      "limitations": "Mailbox/Keyword/Threadfilter und Fenster; Textsuche vereinfacht, Datumsvergleich lexikalisch, keine Index-/Sortierparitaet."
+    },
+    "Email/set": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn answer_email_set("
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub async fn queue_submission("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn writable_jmap_queues_flags_atomically_and_read_only_remains_enforced(",
+          "name": "writable_jmap_queues_flags_atomically_and_read_only_remains_enforced"
+        }
+      ],
+      "limitations": "Seen/Flagged, Verschieben, Papierkorb und lokale Entwuerfe; strukturierter Versand separat journalisiert. Keine beliebigen Email/set-Patches; Live-Schreibnachweis auf freigegebene Flags begrenzt."
+    },
+    "EmailSubmission/changes": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/changes/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "EmailSubmission/get": {
+      "status": "fallback",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "methodCalls.every(([method]) => method === 'EmailSubmission/get'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/submission/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Reine Batches liefern leere lokale Ersatzantworten. Rust liest echte Versandbelege im separat kontrollierten Worker; keine allgemeine lokale Submission-Replik."
+    },
+    "EmailSubmission/query": {
+      "status": "fallback",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "methodCalls.every(([method]) => method === 'EmailSubmission/get'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/submission/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Reine Batches liefern leere lokale Ersatzantworten. Rust liest echte Versandbelege im separat kontrollierten Worker; keine allgemeine lokale Submission-Replik."
+    },
+    "EmailSubmission/set": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "__DESKTOP_QUEUE_SUBMISSION__"
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub async fn queue_submission("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/submission/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/journal.rs",
+          "anchor": "fn offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay(",
+          "name": "offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay"
+        }
+      ],
+      "limitations": "Nur strukturierter Versandpfad mit Email/set + Submission/set/get und dauerhaftem Journal. Generische Aufrufe abgelehnt; bestimmtes Cleanup lokal bestaetigt. Kein Live-Versandnachweis."
+    },
+    "FileNode/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/files.ts",
+          "anchor": "export async function answerFiles("
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub fn local_files("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/file/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Metadaten aus redb, vereinfachte Query. Set ueber Journal mit lokalen Uploadabhaengigkeiten; Inhaltsersetzung und volle Batch/Referenzparitaet fehlen. Keine Live-FileNode-Aenderungen."
+    },
+    "FileNode/query": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/files.ts",
+          "anchor": "export async function answerFiles("
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub fn local_files("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/file/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Metadaten aus redb, vereinfachte Query. Set ueber Journal mit lokalen Uploadabhaengigkeiten; Inhaltsersetzung und volle Batch/Referenzparitaet fehlen. Keine Live-FileNode-Aenderungen."
+    },
+    "FileNode/set": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/files.ts",
+          "anchor": "export async function answerFiles("
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "fn local_object_set_inner("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/file/set.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "fn file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes(",
+          "name": "file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes"
+        }
+      ],
+      "limitations": "Metadaten aus redb, vereinfachte Query. Set ueber Journal mit lokalen Uploadabhaengigkeiten; Inhaltsersetzung und volle Batch/Referenzparitaet fehlen. Keine Live-FileNode-Aenderungen."
+    },
+    "Identity/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "methodCalls.every(([method]) => method === 'Identity/get')"
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub fn local_identities("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/identity/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Reine Identity-Batches ueber native lokale Identitaeten; gemischte Batches koennen im generischen Mailresponder leer beantwortet werden. Kein Nachweis voller Batchparitaet."
+    },
+    "Identity/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/identity/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Keyword/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/api/request.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein lokaler Handler und kein eigener Handlerpfad in dieser Stalwart-Referenz bestaetigt; Bulwarks Query-Fallback fuer Tagzaehler gesondert pruefen."
+    },
+    "Mailbox/changes": {
+      "status": "fallback",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "\"Email/changes\" | \"Email/queryChanges\""
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/changes/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/sync.rs",
+          "anchor": "fn paginated_changes_remove_destroyed_objects_and_advance_each_page(",
+          "name": "paginated_changes_remove_destroyed_objects_and_advance_each_page"
+        }
+      ],
+      "limitations": "Lokaler Responder liefert cannotCalculateChanges; Bulwark muss voll neu lesen. Rust-Worker nutzt Server-Email/changes separat. Test prueft den Worker, nicht lokale Deltas."
+    },
+    "Mailbox/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn answer_read("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/mailbox/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn shared_batches_route_by_account_and_revoked_accounts_cannot_read_cached_data(",
+          "name": "shared_batches_route_by_account_and_revoked_accounts_cannot_read_cached_data"
+        }
+      ],
+      "limitations": "Lokale Ordner und Eigenschaftsauswahl; keine vollstaendige Get-Argumentvalidierung."
+    },
+    "Mailbox/query": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn answer_read("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/mailbox/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Nur ohne Filter; position/limit vereinfacht, keine Sortierung/Anchor-Paritaet."
+    },
+    "Mailbox/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/mailbox/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "ParticipantIdentity/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src/desktop/calendar.ts",
+          "anchor": "export async function answerCalendar("
+        },
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "pub async fn synchronize("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/participant_identity/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/calendar.rs",
+          "anchor": "fn calendar_snapshot_survives_offline_restart_and_failed_delta(",
+          "name": "calendar_snapshot_survives_offline_restart_and_failed_delta"
+        }
+      ],
+      "limitations": "TypeScript beantwortet native redb-Snapshots; Kalender-Rekurrenz clientseitig. Filter, Sortierung, Fenster, Rechte und gemischte Batches nur Teilumfang. Testbeleg gilt fuer Snapshot-Persistenz/Worker, nicht fuer jede TS-Queryoption."
+    },
+    "ParticipantIdentity/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/participant_identity/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Principal/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/principal/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Principal/getAvailability": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/principal/availability.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Principal/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/principal/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "PushSubscription/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/push/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Web-Push-Abonnements nicht portiert. Native SSE-Verbindung und Reconnect-Worker sind ein anderer Pfad."
+    },
+    "PushSubscription/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/push/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Web-Push-Abonnements nicht portiert. Native SSE-Verbindung und Reconnect-Worker sind ein anderer Pfad."
+    },
+    "Quota/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/quota/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "SearchSnippet/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/email/snippet.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "ShareNotification/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/share_notification/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "ShareNotification/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/share_notification/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "ShareNotification/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/share_notification/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "SieveScript/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/sieve/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "SieveScript/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/sieve/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "SieveScript/validate": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/sieve/validate.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "Thread/get": {
+      "status": "partial",
+      "local": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn answer_read("
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/thread/get.rs"
+      ],
+      "tests": [
+        {
+          "file": "src-tauri/src/desktop.rs",
+          "anchor": "fn local_jmap_filters_threads_and_rejects_unimplemented_writes(",
+          "name": "local_jmap_filters_threads_and_rejects_unimplemented_writes"
+        }
+      ],
+      "limitations": "Threadmitglieder aus lokal sichtbarem Kontobestand; Reihenfolge nicht vollstaendig an Stalwart angeglichen."
+    },
+    "VacationResponse/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/vacation/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "VacationResponse/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/vacation/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Kein implementierter Desktop-Responder fuer diese Methode; Webmail-Funktion nicht als verfuegbar zusagen."
+    },
+    "x:Account/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AccountPassword/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AccountPassword/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AccountSettings/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AccountSettings/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ApiKey/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ApiKey/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ApiKey/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AppPassword/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AppPassword/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:AppPassword/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ArchivedItem/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ArchivedItem/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:ArchivedItem/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:OAuthClient/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:OAuthClient/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:PublicKey/get": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/get.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:PublicKey/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:PublicKey/set": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/set.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    },
+    "x:Tenant/query": {
+      "status": "missing",
+      "local": [
+        {
+          "file": "src/desktop/bootstrap.ts",
+          "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'"
+        }
+      ],
+      "stalwart": [
+        "crates/jmap/src/registry/query.rs"
+      ],
+      "tests": [],
+      "limitations": "Stalwart-Selfservice/Admin/Recovery-Erweiterung nicht portiert; keine Browser-Zugangsdaten oder direkten Serverzugriffe zulassen. Registry-Quelldatei ist nur die generische Referenz, Objektregistrierung nicht als kompatibel bestaetigt."
+    }
+  },
+  "priorities": [
+    "Mail-Lesen: echte Datumswerte, Text-/Adresssuche, Sortierung und SearchSnippet-Fallback gegen Stalwart angleichen; Email/get besitzt jetzt einen eigenen Standardprojektor mit Header-/MIME-/Bodyoptionen.",
+    "Batchrouting: gemischte Kalender/Datei/Mail/Identity-Aufrufe und Ergebnisreferenzen vereinheitlichen; heutige Sonderpfade nicht als volle JMAP-Unterstuetzung behandeln.",
+    "Mailbox/query und Mailbox/set: Ordnerfilter, Sortierung, Fenster, Erstellen/Umbenennen/Loeschen und Rechte pruefen und lokal journalisieren.",
+    "Entwuerfe/Versand: Server-Entwurfsabgleich, Import/Copy, MIME und Submission-Belege vervollstaendigen. Live-Tests benoetigen separate Freigaben.",
+    "Kalender-/Kontakt-/Dateischreiben und Nebenpfade vervollstaendigen; Admin/Selfservice/Sieve/Quota explizit priorisieren statt implizit freizuschalten."
+  ],
+  "dynamicReviews": [
+    {
+      "context": "upstream/bulwark/app/api/dev-jmap/[...path]/route.ts:resolveBackReferences",
+      "review": "Entwicklungsmock leitet den uebergebenen Methodennamen in die Antwort weiter. Kein Desktop- oder Stalwart-Handler; keine zusaetzliche endliche Methodenmenge ableitbar."
+    },
+    {
+      "context": "upstream/bulwark/lib/impersonation/app-password.ts:callStalwart",
+      "review": "Generischer serverseitiger Impersonation-Transport nimmt beliebige Methodentupel entgegen. Statische Aufrufer fuer AppPassword sind erfasst. Der Desktop portiert diesen Pfad nicht; beliebige Laufzeitwerte werden nicht als unterstuetzt bewertet."
+    },
+    {
+      "context": "upstream/bulwark/lib/jmap/client.ts:getCollectionChanges",
+      "review": "Typunion Email | Mailbox ergibt Email/changes und Mailbox/changes; beide in der Matrix. Das zweite Template prueft nur den Antwortnamen."
+    },
+    {
+      "context": "upstream/bulwark/stores/account-security-store.ts:createCredential",
+      "review": "SetMethod-Typunion ergibt x:AppPassword/set und x:ApiKey/set; beide in der Matrix. Im Desktop fehlt die Credential-Verwaltung."
+    },
+    {
+      "context": "upstream/bulwark/stores/account-security-store.ts:removeCredential",
+      "review": "Gleiche SetMethod-Typunion beim Loeschen. Kein Desktop-Schreibpfad; keine Erweiterung der bestehenden Live-Schreibfreigaben."
+    }
+  ],
+  "transportReviews": [
+    {
+      "path": "Sitzung / Authentifizierung",
+      "review": "src-tauri/src/session.rs und config.rs laden Sitzung und Zugangsdaten nativ. src/desktop/bootstrap.ts ersetzt Bulwarks Anmeldung durch eine lokale Sitzung. OAuth/Admin/Impersonation sind nicht dadurch portiert."
+    },
+    {
+      "path": "JMAP / lokale Batches",
+      "review": "src/desktop/bootstrap.ts verteilt Mail/Kontakte an native Responder, Kalender/Dateien an TS-Snapshotadapter. Gemischte Batches und Identity-/Submission-Sonderfaelle sind ausdrueckliche Luecken, kein direkter Browser-Netzwerk-Fallback."
+    },
+    {
+      "path": "Blobdownload / Upload",
+      "review": "src/desktop/blobs.ts und src-tauri/src/lib.rs, blobs.rs, uploads.rs bilden HTTP-Blobpfade ueber Rust/redb ab. JMAP Blob/get, Blob/copy sowie Email/import sind davon getrennt und fehlen. Uploadfreigabe bleibt auf bereits autorisierte Testfaelle begrenzt."
+    },
+    {
+      "path": "Push / Reconnect",
+      "review": "src-tauri/src/push.rs verarbeitet SSE; die Desktopadapter setzen Bulwarks Pushfunktionen um. Web PushSubscription/get/set und Browser-Serviceworker sind keine native Subscription-Unterstuetzung."
+    },
+    {
+      "path": "HTTP-API / Plugins / externe Dienste",
+      "review": "src/desktop/bootstrap.ts beantwortet ausgewaehlte /api-Konfigurationen lokal und lehnt andere Serverfunktionen ab. Nicht portierte Serverproxies, Adminfunktionen und privilegierte Plugins bleiben gesperrt. Externe Plugins koennen beliebige Methoden erzeugen; statische Analyse des Submoduls beweist deren Vollstaendigkeit nicht."
+    }
+  ],
+  "nonProtocol": {
+    "Unknown/method": "Platzhalter fuer anonymisierte Fehlerberichte, keine aufgerufene Methode.",
+    "CalendarEvent/create": "Diagnosebezeichnung; tatsaechlicher Aufruf verwendet CalendarEvent/set.",
+    "CalendarEvent/batchCreate": "Diagnosebezeichnung; tatsaechlicher Aufruf verwendet CalendarEvent/set.",
+    "CalendarTask/fetch": "Diagnosebezeichnung fuer Kalenderaufgaben; kein Methodenaufruf dieses Namens.",
+    "CalendarTask/create": "Diagnosebezeichnung; Aufgabe wird ueber CalendarEvent/set abgebildet.",
+    "TaskStore/createTask": "Lokale Fehlerkontext-Bezeichnung im Zustandsspeicher.",
+    "Deliveries/s": "Diagrammachsenbeschriftung in einem Demo-Werkzeug."
+  }
+}

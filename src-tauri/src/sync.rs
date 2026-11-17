@@ -24,6 +24,8 @@ const EMAIL_PROPERTIES: &[&str] = &[
     "keywords",
     "size",
     "receivedAt",
+    "sender",
+    "headers",
     "from",
     "to",
     "cc",
@@ -821,11 +823,12 @@ async fn get_emails(
     account: &str,
     ids: &[String],
 ) -> Result<Value, SyncError> {
-    let response = remote
+    let mut response = remote
         .call(
             "Email/get",
             json!({"accountId":account,"ids":ids,"properties":EMAIL_PROPERTIES,
-        "fetchTextBodyValues":true,"fetchHTMLBodyValues":true,"maxBodyValueBytes":262144}),
+        "bodyProperties":["partId","blobId","size","name","type","charset","disposition","cid","language","location","headers"],
+        "fetchTextBodyValues":true,"fetchHTMLBodyValues":true,"fetchAllBodyValues":true,"maxBodyValueBytes":262144}),
         )
         .await?;
     let expected: BTreeSet<&str> = ids.iter().map(String::as_str).collect();
@@ -845,6 +848,51 @@ async fn get_emails(
     }
     if received != expected {
         return Err(SyncError::Protocol);
+    }
+    let state = text(&response, "state")?;
+    let truncated: Vec<(usize, String)> = response["list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .filter(|(_, email)| {
+            email["bodyValues"]
+                .as_object()
+                .is_some_and(|values| values.values().any(|v| v["isTruncated"] == true))
+        })
+        .map(|(index, email)| (index, email["id"].as_str().unwrap().to_owned()))
+        .collect();
+    for (index, id) in truncated {
+        let full = remote
+            .call(
+                "Email/get",
+                json!({"accountId":account,"ids":[id],"properties":["id","bodyValues"],
+            "fetchTextBodyValues":true,"fetchHTMLBodyValues":true,"fetchAllBodyValues":true,
+            "maxBodyValueBytes":crate::email_get::FULL_BODY_BYTES}),
+            )
+            .await?;
+        if text(&full, "state")? != state {
+            return Err(SyncError::ChangedDuringSnapshot);
+        }
+        let rows = full["list"].as_array().ok_or(SyncError::Protocol)?;
+        if rows.len() != 1
+            || rows[0]["id"] != id
+            || !strings(&full, "notFound")?.is_empty()
+            || !rows[0]["bodyValues"].is_object()
+        {
+            return Err(SyncError::Protocol);
+        }
+        if response["list"][index]["bodyValues"]
+            .as_object()
+            .is_some_and(|values| {
+                values
+                    .keys()
+                    .any(|part| rows[0]["bodyValues"].get(part).is_none())
+            })
+        {
+            return Err(SyncError::Protocol);
+        }
+        response["list"][index]["bodyValues"] = rows[0]["bodyValues"].clone();
     }
     Ok(response)
 }
@@ -1036,6 +1084,31 @@ pub async fn synchronize(
     synchronize_with_policy(store, remote, scope, account, false).await
 }
 
+/// One-time, read-only projection upgrade for existing desktop replicas. The
+/// old checkpoint stays valid until a complete replacement snapshot commits.
+pub async fn synchronize_projected_with_policy(
+    store: &Store,
+    remote: &impl Remote,
+    scope: &str,
+    account: &str,
+    read_only: bool,
+) -> Result<(), SyncError> {
+    let marker = format!("{scope}:email-projection");
+    if store.get(&marker)?.as_deref() != Some("headers-body-v2") {
+        pull_mailboxes(store, remote, scope, account).await?;
+        let expected = store.metadata(scope)?.email_state;
+        snapshot(store, remote, scope, account, expected.as_deref()).await?;
+        store.put(&marker, "headers-body-v2")?;
+        if read_only {
+            return Ok(());
+        }
+        flush_pending_keywords(store, remote, scope, account).await?;
+        flush_pending_deletes(store, remote, scope, account).await
+    } else {
+        synchronize_with_policy(store, remote, scope, account, read_only).await
+    }
+}
+
 pub async fn synchronize_with_policy(
     store: &Store,
     remote: &impl Remote,
@@ -1208,6 +1281,136 @@ async fn flush_pending_keywords(
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct ProjectionRemote {
+        script: Script,
+        requests: Mutex<Vec<Value>>,
+    }
+    impl Remote for ProjectionRemote {
+        async fn call(&self, method: &str, args: Value) -> Result<Value, SyncError> {
+            if method == "Email/get" {
+                self.requests.lock().unwrap().push(args.clone());
+            }
+            self.script.call(method, args).await
+        }
+    }
+    #[test]
+    fn projection_upgrade_hydrates_headers_and_bodies_once_and_survives_restart() {
+        tauri::async_runtime::block_on(async {
+            let (dir, store) = store();
+            seed(&store);
+            store.queue_keyword("scope", "m1", "$seen", true).unwrap();
+            let base = json!({"id":"m1","keywords":{},"headers":[{"name":"Subject","value":"offline header"}],"textBody":[{"partId":"1","type":"text/plain"}],"bodyValues":{"1":{"value":"short","isTruncated":true}}});
+            let full =
+                json!({"id":"m1","bodyValues":{"1":{"value":"complete body","isTruncated":false}}});
+            let remote = ProjectionRemote {
+                requests: Mutex::new(vec![]),
+                script: Script::new(vec![
+                    ("Mailbox/get", Ok(get("mb", vec![]))),
+                    ("Email/get", Ok(get("s2", vec![]))),
+                    (
+                        "Email/query",
+                        Ok(json!({"queryState":"q","ids":["m1"],"total":1})),
+                    ),
+                    ("Email/get", Ok(get("s2", vec![base]))),
+                    ("Email/get", Ok(get("s2", vec![full]))),
+                    ("Email/get", Ok(get("s2", vec![]))),
+                ]),
+            };
+            synchronize_projected_with_policy(&store, &remote, "scope", "a", true)
+                .await
+                .unwrap();
+            remote.script.exhausted();
+            let requests = remote.requests.lock().unwrap();
+            assert_eq!(requests[1]["fetchAllBodyValues"], true);
+            assert!(requests[1]["properties"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("headers")));
+            assert!(requests[1]["bodyProperties"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("headers")));
+            assert_eq!(
+                requests[2]["maxBodyValueBytes"],
+                crate::email_get::FULL_BODY_BYTES
+            );
+            drop(requests);
+            drop(store);
+            let store = Store::open(&dir.path().join("sync.redb")).unwrap();
+            assert_eq!(
+                store.get("scope:email-projection").unwrap().as_deref(),
+                Some("headers-body-v2")
+            );
+            assert!(store.get("other:email-projection").unwrap().is_none());
+            let mail = store.local_mail("scope").unwrap();
+            assert_eq!(mail.pending.len(), 1);
+            let local = crate::email_get::answer(&mail.emails,"a","s2",&json!({"properties":["header:Subject:asText","bodyValues"],"fetchAllBodyValues":true})).unwrap();
+            assert_eq!(local["list"][0]["header:Subject:asText"], "offline header");
+            assert_eq!(
+                local["list"][0]["bodyValues"]["1"]["value"],
+                "complete body"
+            );
+            let next = Script::new(vec![
+                ("Mailbox/get", Ok(get("mb", vec![]))),
+                (
+                    "Email/changes",
+                    Ok(changes("s2", "s2", vec![], vec![], false)),
+                ),
+            ]);
+            synchronize_projected_with_policy(&store, &next, "scope", "a", true)
+                .await
+                .unwrap();
+            next.exhausted();
+        });
+    }
+    #[test]
+    fn failed_body_upgrade_keeps_old_checkpoint_and_requires_another_complete_snapshot() {
+        tauri::async_runtime::block_on(async {
+            for failure in [
+                Err(SyncError::Network),
+                Ok(get("changed", vec![json!({"id":"m1","bodyValues":{}})])),
+                Ok(get("s2", vec![json!({"id":"other","bodyValues":{}})])),
+                Ok(get("s2", vec![json!({"id":"m1","bodyValues":{}})])),
+            ] {
+                let (_dir, store) = store();
+                seed(&store);
+                let remote = Script::new(vec![
+                    ("Mailbox/get", Ok(get("mb", vec![]))),
+                    ("Email/get", Ok(get("s2", vec![]))),
+                    (
+                        "Email/query",
+                        Ok(json!({"queryState":"q","ids":["m1"],"total":1})),
+                    ),
+                    (
+                        "Email/get",
+                        Ok(get(
+                            "s2",
+                            vec![
+                                json!({"id":"m1","bodyValues":{"1":{"value":"short","isTruncated":true}}}),
+                            ],
+                        )),
+                    ),
+                    ("Email/get", failure),
+                ]);
+                assert!(
+                    synchronize_projected_with_policy(&store, &remote, "scope", "a", true)
+                        .await
+                        .is_err()
+                );
+                remote.exhausted();
+                assert_eq!(
+                    store.metadata("scope").unwrap().email_state.as_deref(),
+                    Some("s1")
+                );
+                assert_eq!(
+                    store.local_mail("scope").unwrap().emails[0]["subject"],
+                    "Cached"
+                );
+                assert!(store.get("scope:email-projection").unwrap().is_none());
+            }
+        });
+    }
+
     #[test]
     fn upload_acknowledgements_accept_stalwart_200_and_201_with_a_complete_matching_blob() {
         use reqwest::StatusCode;

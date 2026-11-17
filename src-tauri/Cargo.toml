@@ -23,6 +23,8 @@ url = { version = "2", features = ["serde"] }
 tokio = { version = "1", features = ["macros", "sync", "time"] }
 futures-util = "0.3"
 keyring = { version = "4.2", features = ["v1"] }
+mail-parser = { version = "1.0.1", features = ["full_encoding"] }
+calcard = "0.3.14"
 
 [dev-dependencies]
 tempfile = "3"

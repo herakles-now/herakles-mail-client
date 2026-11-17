@@ -14,6 +14,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   const syncedMail = new Set<string>();
   const syncedCalendars = new Set<string>();
   const syncedContacts = new Set<string>();
+  let cacheLimitMib = 256;
   let flagged = false;
   let mailboxIds: Record<string, boolean> = { inbox: true };
   const pendingWrites = new Set<string>();
@@ -23,10 +24,16 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   const resolvedWrites: any[] = [];
   let nextJournalId = 0;
   let eventTitle = 'Offline-Kalendertermin';
+  let invitationMode = false;
+  let invitationApplied = false;
+  let invitationStoredSequence = 1;
+  let rejectInvitationUpdate = true;
+  const invitationWrites: any[] = [];
   let fileName = 'Offline-Datei.txt';
   const cachedBlobs = new Set<string>();
   const stagedUploads = new Map<string, { base64: string; mediaType: string }>();
   const attachmentBytes = Buffer.from([0, 128, 255, 65, 10]);
+  const invitationBytes = Buffer.from('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:synthetic-invitation-1\r\nDTSTART:20261103T110000Z\r\nDTEND:20261103T120000Z\r\nSUMMARY:Synthetische Einladung\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n');
   const calls: string[] = [];
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -38,28 +45,40 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     calls.push(command);
     const email = { id: 'email-1', threadId: 'thread-1', blobId: 'blob-1', subject: 'Offline-Nachricht aus redb',
       from: [{ name: 'Desktop Test', email: 'sender@example.test' }], to: [{ email: 'reader@example.test' }],
+      ...(invitationMode ? { authenticationResults: { dmarc: { result: 'pass', domain: 'example.test' } } } : {}),
       keywords: { $seen: true }, mailboxIds: { inbox: true }, receivedAt: '2026-11-03T10:00:00Z', size: 100,
       preview: 'Diese Nachricht kommt aus dem lokalen Repository.', hasAttachment: true,
-      textBody: [{ partId: '1', type: 'text/plain' }], htmlBody: [], attachments: [{ partId: '2', blobId: 'attachment-1', type: 'application/octet-stream', name: 'offline-test.bin', size: attachmentBytes.length, disposition: 'attachment' }],
+      textBody: [{ partId: '1', type: 'text/plain' }], htmlBody: [], attachments: [{ partId: '2', blobId: 'attachment-1', type: 'application/octet-stream', name: 'offline-test.bin', size: attachmentBytes.length, disposition: 'attachment' }, { partId: 'ics', blobId: 'invite-1', type: 'text/calendar', name: 'invitation.ics', size: invitationBytes.length, disposition: 'attachment' }],
       bodyValues: { '1': { value: 'Lokal verfügbarer Testinhalt.', isTruncated: false } } };
     const inbox = { id: 'inbox', name: 'Inbox', role: 'inbox', parentId: null, sortOrder: 0,
       totalEmails: 1, unreadEmails: 0, totalThreads: 1, unreadThreads: 0, isSubscribed: true,
       myRights: { mayReadItems: true, mayAddItems: false, mayRemoveItems: false, maySetSeen: false,
         maySetKeywords: false, mayCreateChild: false, mayRename: false, mayDelete: false, maySubmit: false } };
     switch (command) {
+      case 'download_cache_usage': return [{ accountId: 'account', name: 'Personal cache', usedBytes: Math.min(40, cacheLimitMib) * 1024 * 1024, limitBytes: cacheLimitMib * 1024 * 1024, count: 2 }, { accountId: 'shared-mail', name: 'Shared cache', usedBytes: 0, limitBytes: 256 * 1024 * 1024, count: 0 }];
+      case 'set_download_cache_limit':
+        if (args.accountId !== 'account' || args.limitMib < 25 || args.limitMib > 4096) throw 'invalid cache limit';
+        cacheLimitMib = args.limitMib; return null;
+
       case 'stage_upload': {
         if (!writable || args.accountId !== 'account') throw 'forbidden';
         const blobId = `local-upload-${stagedUploads.size + 1}`;
         stagedUploads.set(JSON.stringify([args.accountId, blobId]), { base64: args.base64, mediaType: args.mediaType });
         return { blobId, size: Buffer.from(args.base64, 'base64').length, type: args.mediaType };
       }
-      case 'local_blob': if (stagedUploads.has(JSON.stringify([args.accountId, args.blobId]))) return stagedUploads.get(JSON.stringify([args.accountId, args.blobId]));
+      case 'local_blob': if (args.blobId === 'invite-1' && cachedBlobs.has(JSON.stringify([args.accountId, args.blobId]))) return { base64: invitationBytes.toString('base64'), mediaType: 'text/calendar' };
+        if (stagedUploads.has(JSON.stringify([args.accountId, args.blobId]))) return stagedUploads.get(JSON.stringify([args.accountId, args.blobId]));
         return cachedBlobs.has(JSON.stringify([args.accountId, args.blobId])) ? { base64: attachmentBytes.toString('base64'), mediaType: 'application/octet-stream' } : null;
       case 'sync_blob':
         if (!serverAvailable) throw new Error('Server offline');
-        if (args.blobId !== 'attachment-1') throw new Error('Unknown fixture blob');
+        if (!['attachment-1', 'invite-1'].includes(args.blobId)) throw new Error('Unknown fixture blob');
         cachedBlobs.add(JSON.stringify([args.accountId, args.blobId]));
         return null;
+      case 'local_calendar_parse': {
+        expect(cachedBlobs.has(JSON.stringify([args.accountId, 'invite-1']))).toBeTruthy();
+        expect(args.blobIds).toEqual(['invite-1']);
+        return { accountId: args.accountId, parsed: { 'invite-1': [{ '@type': 'Event', uid: 'synthetic-invitation-1', sequence: 2, status: 'confirmed', title: 'Synthetische Einladung', start: '2026-11-03T11:00:00', timeZone: 'Etc/UTC', duration: 'PT1H', calendarIds: null, id: null, organizerCalendarAddress: 'mailto:sender@example.test', participants: { reader: { calendarAddress: 'mailto:reader@example.test', name: 'Test Reader', roles: { attendee: true } } } }] }, notFound: [], notParsable: [] };
+      }
       case 'push_status': return true;
       case 'profile_inventory': return { profiles: [{ id: 'fixture', name: 'Test', activeAccountId: 'login', accounts: [{ id: 'login', label: 'Desktop Test' }] }], activeProfileId: 'fixture' };
       case 'has_account_configuration': return true;
@@ -74,6 +93,13 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
       case 'local_object_set': {
         if (!writable) throw 'forbidden';
         const calendar = args.method === 'CalendarEvent/set';
+        if (invitationMode && calendar) {
+          expect(args.args.accountId).toBe('account');
+          expect(args.args.ifInState).toMatch(/^local-calendar:/);
+          if (rejectInvitationUpdate) { rejectInvitationUpdate = false; throw 'stateMismatch'; }
+          invitationWrites.push(args.args);
+          invitationApplied = true; invitationStoredSequence = 2;
+        }
         if (calendar) eventTitle = args.args.update['event-1'].title;
         else fileName = args.args.update['file-1'].name;
         const journalId = ++nextJournalId;
@@ -144,7 +170,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
           sharesDiscovered = true;
         }
         const info: any = { serverUrl: 'https://mail.example.test', username: 'reader@example.test', readOnly: !writable,
-        session: { username: 'reader@example.test', state: 'fixture', apiUrl: 'https://mail.example.test/jmap', uploadUrl: 'https://mail.example.test/upload/{accountId}',
+        session: { username: 'reader@example.test', state: 'fixture', apiUrl: 'https://mail.example.test/jmap', downloadUrl: 'https://mail.example.test/download/{accountId}/{blobId}/{name}?type={type}', uploadUrl: 'https://mail.example.test/upload/{accountId}',
           capabilities: { 'urn:ietf:params:jmap:core': { maxObjectsInGet: 500, maxCallsInRequest: 16 }, 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {}, 'urn:ietf:params:jmap:contacts': {} },
           accounts: { account: { name: 'Desktop Test', isPersonal: true, isReadOnly: !writable, accountCapabilities: { 'urn:ietf:params:jmap:mail': {}, 'urn:ietf:params:jmap:calendars': {}, 'urn:ietf:params:jmap:submission': {}, 'urn:ietf:params:jmap:filenode': {}, 'urn:ietf:params:jmap:contacts': {} } } },
           primaryAccounts: { 'urn:ietf:params:jmap:mail': 'account', 'urn:ietf:params:jmap:calendars': 'account', 'urn:ietf:params:jmap:submission': 'account', 'urn:ietf:params:jmap:filenode': 'account' } } };
@@ -167,9 +193,9 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
         calendars: [{ id: 'calendar-1', name: args.accountId === 'shared' ? 'Team-Kalender' : 'Offline-Kalender', color: '#2563eb', sortOrder: 0,
           isSubscribed: true, isVisible: true, isDefault: true, timeZone: 'Europe/Belgrade',
           myRights: { mayReadItems: true, mayReadFreeBusy: true, mayWriteAll: true, mayWriteOwn: true, mayShare: true } }],
-        events: { 'event-1': { id: 'event-1', '@type': 'Event', uid: 'fixture-event', title: args.accountId === 'shared' ? 'Freigegebener Termin' : eventTitle,
-          calendarIds: { 'calendar-1': true }, start: '2026-11-03T12:00:00', duration: 'PT1H',
-          timeZone: 'Europe/Belgrade', utcStart: '2026-11-03T11:00:00Z', utcEnd: '2026-11-03T12:00:00Z',
+        events: { 'event-1': { id: 'event-1', '@type': 'Event', uid: invitationMode ? 'synthetic-invitation-1' : 'fixture-event', sequence: invitationStoredSequence, organizerCalendarAddress: 'mailto:sender@example.test', title: args.accountId === 'shared' ? 'Freigegebener Termin' : eventTitle,
+          calendarIds: { 'calendar-1': true }, start: invitationApplied ? '2026-11-03T11:00:00' : '2026-11-03T12:00:00', duration: 'PT1H',
+          timeZone: invitationApplied ? 'Etc/UTC' : 'Europe/Belgrade', utcStart: '2026-11-03T11:00:00Z', utcEnd: '2026-11-03T12:00:00Z',
           showWithoutTime: false, status: 'confirmed', recurrenceRule: null, recurrenceOverrides: null } },
       };
       case 'sync_calendar': if (!serverAvailable) throw new Error('Server offline'); syncedCalendars.add(args.accountId); return null;
@@ -181,6 +207,8 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
         const scopedEmail = shared ? { ...email, subject: 'Nachricht aus Teamfreigabe', bodyValues: { '1': { value: 'Nur freigegebenes Postfach.', isTruncated: false } } } : { ...email, mailboxIds, keywords: { ...email.keywords, ...(flagged ? { $flagged: true } : {}) } };
         const scopedInbox = shared ? { ...inbox, name: 'Team-Postfach', role: null } : { ...inbox, myRights: { ...inbox.myRights, maySetSeen: writable, maySetKeywords: writable, mayAddItems: writable, mayRemoveItems: writable } };
         const base = { accountId: target, state: 'local:fixture' };
+        const legacyDraftQuery = !shared && args.methodCalls.some(([name, value]: [string, any]) => name === 'Email/query' && value.filter?.inMailbox === 'drafts');
+        const legacyDraft = { ...scopedEmail, id: 'local-draft-legacy', threadId: 'local-draft-legacy', subject: 'Alter Entwurf ohne Datum', mailboxIds: { drafts: true }, receivedAt: null, sentAt: null, keywords: { $draft: true } };
         switch (method) {
           case 'Email/set': {
             if (!writable || shared) return ['error', { type: 'forbidden' }, id];
@@ -195,8 +223,8 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
           }
           case 'Mailbox/query': return [method, { ...base, ids: ['inbox'], position: 0, total: 1, queryState: 'local:fixture', canCalculateChanges: false }, id];
           case 'Mailbox/get': return [method, { ...base, list: [scopedInbox, { ...scopedInbox, id: 'trash', name: 'Papierkorb', role: 'trash' }, { ...scopedInbox, id: 'drafts', name: 'Entwürfe', role: 'drafts' }, { ...scopedInbox, id: 'sent', name: 'Gesendet', role: 'sent' }], notFound: [] }, id];
-          case 'Email/query': return [method, { ...base, ids: argument.filter?.inMailbox && !shared && !mailboxIds[argument.filter.inMailbox] ? [] : ['email-1'], position: 0, total: 1, queryState: 'local:fixture', canCalculateChanges: false }, id];
-          case 'Email/get': return [method, { ...base, list: [argument.ids?.includes('local-draft-1') ?
+          case 'Email/query': return [method, { ...base, ids: legacyDraftQuery ? ['local-draft-legacy'] : argument.filter?.inMailbox && !shared && !mailboxIds[argument.filter.inMailbox] ? [] : ['email-1'], position: 0, total: 1, queryState: 'local:fixture', canCalculateChanges: false }, id];
+          case 'Email/get': return [method, { ...base, list: [legacyDraftQuery ? legacyDraft : argument.ids?.includes('local-draft-1') ?
             { ...scopedEmail, id: 'local-draft-1', subject: 'Lokaler Testentwurf', keywords: { $draft: true } } : scopedEmail], notFound: [] }, id];
           case 'Thread/get': return [method, { ...base, list: [{ id: 'thread-1', emailIds: ['email-1'] }], notFound: [] }, id];
           case 'Identity/get': return [method, { ...base, list: [], notFound: [] }, id];
@@ -228,9 +256,16 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   });
   await page.goto('/de/');
   await expect(page.getByText('Offline-Nachricht aus redb').first()).toBeVisible();
+  await page.getByText('Entwürfe', { exact: true }).first().click();
+  await expect(page.getByText('Alter Entwurf ohne Datum', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('E-Mails können nicht geladen werden', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Posteingang', exact: true }).first().click();
+  await expect(page.getByText('Offline-Nachricht aus redb').first()).toBeVisible();
   await expect(page.getByText(writable ? 'Test-Schreibmodus' : 'Nur Lesen', { exact: false })).toBeVisible();
   await page.getByText('Offline-Nachricht aus redb', { exact: true }).click();
   await expect(page.getByText('Lokal verfügbarer Testinhalt.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Synthetische Einladung', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Einladung konnte nicht gelesen werden', { exact: true })).toHaveCount(0);
   // The footer reserves its own row, including when the viewport is narrow.
   const footer = page.getByRole('contentinfo', { name: 'Desktop-Status' });
   const workspace = page.locator('.desktop-workspace');
@@ -385,6 +420,23 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   expect(contactWrite.methodResponses[0][1].type).toBe('forbidden');
   await page.screenshot({ path: `.cache/contacts-${writable ? 'write' : 'read'}.png` });
   await page.goto('/de/settings/plugins');
+  await page.getByText('Offline-Speicher', { exact: false }).click();
+  const personalCache = page.locator('.desktop-cache-account').filter({ hasText: 'Personal cache' });
+  await expect(personalCache).toContainText('40 MiB von 256 MiB');
+  await personalCache.getByLabel('Limit in MiB').fill('25');
+  await expect(personalCache).toContainText('sofort entfernt');
+  await personalCache.getByRole('button', { name: 'Limit speichern', exact: true }).click();
+  await expect(personalCache.getByRole('status')).toHaveText('Limit gespeichert.');
+  await page.reload();
+  await page.getByText('Offline-Speicher', { exact: false }).click();
+  await expect(personalCache.getByLabel('Limit in MiB')).toHaveValue('25');
+  await expect(page.locator('.desktop-cache-account').filter({ hasText: 'Shared cache' }).getByLabel('Limit in MiB')).toHaveValue('256');
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.screenshot({ path: `.cache/cache-settings-${writable ? 'write' : 'read'}.png` });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByText('Offline-Speicher', { exact: false }).click();
+  await page.goto('/de/settings/plugins');
+
   await expect(page.locator('input[type="file"]')).toBeAttached();
   const zip = new JSZip();
   zip.file('manifest.json', JSON.stringify({ id: 'desktop-test', name: 'Desktop Test Add-on', version: '1.0.0',
@@ -510,6 +562,36 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     await review.getByRole('button', { name: 'Später', exact: true }).click();
     await page.reload();
     await expect(page.locator('.desktop-changes-toggle')).toHaveText('Keine ausstehenden Aktionen');
+  }
+  // A real invitation banner, native snapshot and durable queue, with no server writes.
+  invitationMode = true;
+  await page.goto('/de/');
+  await page.getByText('Offline-Nachricht aus redb', { exact: true }).click();
+  await expect(page.locator('.desktop-invitation-update')).toContainText('neuere Version');
+  const takeUpdate = page.getByRole('button', { name: 'Terminangaben übernehmen', exact: true });
+  if (!writable) {
+    await expect(takeUpdate).toHaveCount(0);
+  } else {
+    await page.locator('.desktop-network-toggle').click();
+    await expect(page.locator('.desktop-network-toggle')).toHaveText('Offline · Nur lokal');
+    const transports = calls.filter((call) => call.startsWith('transport:')).length;
+    await takeUpdate.click();
+    await expect(page.locator('.desktop-invitation-update')).toContainText('inzwischen geändert');
+    expect(invitationWrites).toHaveLength(0);
+    await takeUpdate.click();
+    await expect(page.locator('.desktop-invitation-update')).toContainText('lokal vorgemerkt');
+    await expect(page.locator('.desktop-invitation-update')).toContainText('entspricht dem lokalen Kalenderstand');
+    await expect(page.locator('.desktop-invitation-update')).not.toContainText('widersprechen');
+    expect(invitationWrites).toHaveLength(1);
+    expect(invitationWrites[0].sendSchedulingMessages).toBe(false);
+    expect(invitationWrites[0].update['event-1'].sequence).toBe(2);
+    expect(invitationWrites[0].update['event-1']).not.toHaveProperty('participants');
+    expect(calls.filter((call) => call.startsWith('transport:')).length).toBe(transports);
+    await expect(takeUpdate).toHaveCount(0);
+    await page.screenshot({ path: '.cache/invitation-update-queued.png', fullPage: true });
+    invitationStoredSequence = 3;
+    await page.evaluate(() => window.dispatchEvent(new Event('desktop-changes-updated')));
+    await expect(page.locator('.desktop-invitation-update')).toContainText('Einladung ist veraltet');
   }
   expect(calls).toContain('local_jmap');
   expect(errors).toEqual([]);

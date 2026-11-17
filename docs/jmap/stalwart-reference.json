@@ -1,0 +1,639 @@
+{
+  "repository": "https://github.com/stalwartlabs/stalwart",
+  "commit": "e7cde9b3fac32d2a254ef782efec56f2373ec5d4",
+  "note": "Pinned source paths and Git blob IDs; source-location evidence, not runtime compatibility proof.",
+  "files": [
+    {
+      "path": "crates/email/src/message/body.rs",
+      "blob": "5e9736ccfabcd8960e2ee6435b83f9ff97e86363"
+    },
+    {
+      "path": "crates/email/src/message/jmap/body.rs",
+      "blob": "b7fc4cdc61dd01ed3e25206c85d4f328caeba751"
+    },
+    {
+      "path": "crates/email/src/message/jmap/header.rs",
+      "blob": "5ba244f6298925a4810104657d36fe60863ca834"
+    },
+    {
+      "path": "crates/email/src/message/jmap/mod.rs",
+      "blob": "a0366f1a09bfa80b4c6c8706b578baccacd762f1"
+    },
+    {
+      "path": "crates/jmap/src/addressbook/get.rs",
+      "blob": "f0797939d6ab4ec0518d2c67c918c415ba771388"
+    },
+    {
+      "path": "crates/jmap/src/addressbook/mod.rs",
+      "blob": "f460abaae14baf84e194ef660b7b054121681a86"
+    },
+    {
+      "path": "crates/jmap/src/addressbook/set.rs",
+      "blob": "074dd7c368a9b090ab71c09196f7a5d943d1a202"
+    },
+    {
+      "path": "crates/jmap/src/api/acl.rs",
+      "blob": "ae267ddf6659e7075c9cbb4945ec6aa7725ea9d2"
+    },
+    {
+      "path": "crates/jmap/src/api/auth.rs",
+      "blob": "7673a969fd0853bd49964a752201916c3c86c929"
+    },
+    {
+      "path": "crates/jmap/src/api/budget.rs",
+      "blob": "401913501fd4f65c460430dae451ac887b36066e"
+    },
+    {
+      "path": "crates/jmap/src/api/event_source.rs",
+      "blob": "85851b5adec24edb7602f5bdc3a77bb427ce4d05"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/apply.rs",
+      "blob": "54771af60a4baf645cd51cdc89be29c976126d6a"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/copy.rs",
+      "blob": "3cc617807a042c223627f3ca0ae3a0c71852bbc0"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/filter.rs",
+      "blob": "001d4a41d779e6d84c6aef655b73d0ebce8e73f3"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/get.rs",
+      "blob": "065e7c8ef186e9e44b4fb166a46e8560cafe7b76"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/mod.rs",
+      "blob": "32c5ab18e98b36d99451aa9f3ea0164f23fc4f76"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/object.rs",
+      "blob": "e6ecd803546cef15af4bb656916567a5487ac6dc"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/patch.rs",
+      "blob": "76c82c1a327074fcb9246c58fc7a58427e5efcf6"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/preload.rs",
+      "blob": "d85efb26540782d1c7c47c3461feb9f9526d2dbd"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/prepared.rs",
+      "blob": "e2e5272e5aebc5d9096675a7fa4f2faee7981082"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/query.rs",
+      "blob": "54a99a518888113d55055594aaf6e5541f6bf698"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/reject.rs",
+      "blob": "e8ded7b38a14c14adab82f6f2b6b58692b90d593"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/validate.rs",
+      "blob": "70a566f0a58a8901861abdd5b2c2e27b2bbae590"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/violation.rs",
+      "blob": "4a44f2173377ef06e9ee83c4e732bfb2988bd86d"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/write.rs",
+      "blob": "427130a2306305a7ed92a2802362579cdf2cbfff"
+    },
+    {
+      "path": "crates/jmap/src/api/metadata/writer.rs",
+      "blob": "5d2bf3a63c975995e0da037997ef372311b10afc"
+    },
+    {
+      "path": "crates/jmap/src/api/mod.rs",
+      "blob": "37ead58bdad70ac85af8d4b907076d0d41b7bcb6"
+    },
+    {
+      "path": "crates/jmap/src/api/parent_ref.rs",
+      "blob": "0b4d4c7f4b8a5402f748297ca6c190b8a684be39"
+    },
+    {
+      "path": "crates/jmap/src/api/pending_creates.rs",
+      "blob": "ae922c743f6273c8a9cf470e3555ef522a82eb32"
+    },
+    {
+      "path": "crates/jmap/src/api/query.rs",
+      "blob": "5852244b5bd22e4e61c39fcd7f5c5c06190a07fc"
+    },
+    {
+      "path": "crates/jmap/src/api/request.rs",
+      "blob": "59a3f9c8d0d8f490cbc34366602958bbfa0d2672"
+    },
+    {
+      "path": "crates/jmap/src/api/session.rs",
+      "blob": "dbe4031b4fe0f853288da63e01b3b81b8c60310e"
+    },
+    {
+      "path": "crates/jmap/src/blob/copy.rs",
+      "blob": "252775d264b957a65f39ac84248d4f72a9934cc9"
+    },
+    {
+      "path": "crates/jmap/src/blob/download.rs",
+      "blob": "1c95092afcd043adcee586a35cb4a6f6a27cd900"
+    },
+    {
+      "path": "crates/jmap/src/blob/embedded.rs",
+      "blob": "9a718d870ca1bc8b92e3f978e04ea05e35eb7681"
+    },
+    {
+      "path": "crates/jmap/src/blob/get.rs",
+      "blob": "dcefc1f10d93ba671a17d8a36b0ae8bf53b435db"
+    },
+    {
+      "path": "crates/jmap/src/blob/mod.rs",
+      "blob": "98bd63706c667738a17f562471efa04e858d00bd"
+    },
+    {
+      "path": "crates/jmap/src/blob/upload.rs",
+      "blob": "bf97914582918eb09ee3bb64d64bcb712a2d7d24"
+    },
+    {
+      "path": "crates/jmap/src/calendar/get.rs",
+      "blob": "0a10a3f67f2cde77df0df5f669dec9aff04d94d4"
+    },
+    {
+      "path": "crates/jmap/src/calendar/mod.rs",
+      "blob": "0701495a6c912812ed9e060ce0944c7c678d37f1"
+    },
+    {
+      "path": "crates/jmap/src/calendar/set.rs",
+      "blob": "1349fca25edf04f642a3449c78690c8f4f0dd476"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/copy.rs",
+      "blob": "e4e44a3e74daa2c47d117a85b9cb89e6030fc596"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/get.rs",
+      "blob": "d819489b783d90a8c89e2369ae492325a4f92fa0"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/hidden.rs",
+      "blob": "84a26f59edf89121f2b65d31f0165df38fd8e46f"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/mod.rs",
+      "blob": "915ec898efa2d1ca2786701fc1bb4174a13292d6"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/parse.rs",
+      "blob": "e28a016c2cd2f906ead6b1db177297f39b8599e2"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/privacy.rs",
+      "blob": "4f1c11962c95bf09d1c51c1511c1c6593c25a479"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/query.rs",
+      "blob": "799515c2b1ea351c3d4d78444904e482cb429368"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/server_set.rs",
+      "blob": "6acf33627387553e1a70d3ffdf77b844551e2556"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/set.rs",
+      "blob": "ae1f81bd449fe29f72894bb2099af5eac31fc535"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/user.rs",
+      "blob": "7a9b809a9decd8b1fbfa554b56ea5673a7b9087b"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event/validate.rs",
+      "blob": "f00e2a49735a7b6f1328d3ae3b183f532a5a7cef"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event_notification/get.rs",
+      "blob": "b550b8cebad1505db57ffc8cf1cd56c81ee22b05"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event_notification/mod.rs",
+      "blob": "8c2a1650529f200299b760a218513d0a37123959"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event_notification/patch.rs",
+      "blob": "771b6aa1e3ed99c0d8daaebc84332d2f25ab5ea0"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event_notification/query.rs",
+      "blob": "21e6053973baeffc05a560eb0787f9b7611bee94"
+    },
+    {
+      "path": "crates/jmap/src/calendar_event_notification/set.rs",
+      "blob": "6f566aef43c1ccb1bdd2c6cc8fb83fa512a161a5"
+    },
+    {
+      "path": "crates/jmap/src/changes/get.rs",
+      "blob": "f5a5953ae160c3362f4f497b497ea06566f1fe75"
+    },
+    {
+      "path": "crates/jmap/src/changes/mod.rs",
+      "blob": "7dd2e365c67e519466a2602b1ef14664645ef3cd"
+    },
+    {
+      "path": "crates/jmap/src/changes/page.rs",
+      "blob": "0bfdc8219eda19e9a775966259ccdce42bf4fcb4"
+    },
+    {
+      "path": "crates/jmap/src/changes/query.rs",
+      "blob": "bf806969be145fed7f6bc5217d8bb0c3bd70579d"
+    },
+    {
+      "path": "crates/jmap/src/changes/state.rs",
+      "blob": "f69c689223eec8422703762af2ab489c2a29ee9f"
+    },
+    {
+      "path": "crates/jmap/src/contact/copy.rs",
+      "blob": "782c8f20f06c119f9d92005876c3e7a0b0ddb309"
+    },
+    {
+      "path": "crates/jmap/src/contact/get.rs",
+      "blob": "2229c94d5161e305d001153178c67c9933a4a40a"
+    },
+    {
+      "path": "crates/jmap/src/contact/mod.rs",
+      "blob": "4cb201a8c7728bf5660e741cf47defa932861410"
+    },
+    {
+      "path": "crates/jmap/src/contact/parse.rs",
+      "blob": "bfd64a656cf56082b941328191bef6e1b58021cf"
+    },
+    {
+      "path": "crates/jmap/src/contact/query.rs",
+      "blob": "6be0d574cba827ae732bb043f909a68f8ecd66ff"
+    },
+    {
+      "path": "crates/jmap/src/contact/set.rs",
+      "blob": "f05c814a790d04dcca141d710db7903ce589b769"
+    },
+    {
+      "path": "crates/jmap/src/email/copy.rs",
+      "blob": "0aa7a480e90eec514cb884607551636056d5b02a"
+    },
+    {
+      "path": "crates/jmap/src/email/get.rs",
+      "blob": "edb1958f7c1d7be0065fa2a534323c1521aa8936"
+    },
+    {
+      "path": "crates/jmap/src/email/grouped.rs",
+      "blob": "a64f5c2312011bbf329ae136ee0b303f6603f5e0"
+    },
+    {
+      "path": "crates/jmap/src/email/import.rs",
+      "blob": "606cdbfe5338eddb6b4b3cd8a0483cbd54f540af"
+    },
+    {
+      "path": "crates/jmap/src/email/mod.rs",
+      "blob": "f31bec988a9df61513a6badd3e8b45cf77af1009"
+    },
+    {
+      "path": "crates/jmap/src/email/parse.rs",
+      "blob": "b3b4a3f8f5bf9b6096bdd8bf901095fc22887680"
+    },
+    {
+      "path": "crates/jmap/src/email/query.rs",
+      "blob": "93996c5787d3e19d91202adcd50c1fd32d94d8f5"
+    },
+    {
+      "path": "crates/jmap/src/email/query/filter.rs",
+      "blob": "9581e03f8fce93d6fa12a121c6e80e32296c88d6"
+    },
+    {
+      "path": "crates/jmap/src/email/query/text.rs",
+      "blob": "98e64107fe1050f33eeda87943a92b414c7fd31b"
+    },
+    {
+      "path": "crates/jmap/src/email/query/window.rs",
+      "blob": "4d835f96e52772d967e35e74aaf20ee5eedf87ec"
+    },
+    {
+      "path": "crates/jmap/src/email/set.rs",
+      "blob": "617028afea74784e6742e533ee00c00c6a432277"
+    },
+    {
+      "path": "crates/jmap/src/email/snippet.rs",
+      "blob": "8077d2e751588520442e469be31b9b4b1f5e4d95"
+    },
+    {
+      "path": "crates/jmap/src/file/copy.rs",
+      "blob": "eb61964c33e11b423edb4b94d528670ca0e810e5"
+    },
+    {
+      "path": "crates/jmap/src/file/get.rs",
+      "blob": "50e85401516f7d77fdacce6e3576be8402e73ed4"
+    },
+    {
+      "path": "crates/jmap/src/file/mod.rs",
+      "blob": "50e470f18577eabf6d1f7969839cf3f7cf8af751"
+    },
+    {
+      "path": "crates/jmap/src/file/node.rs",
+      "blob": "a382b94673efe7a863cd4cc84b22a6a51703a1d2"
+    },
+    {
+      "path": "crates/jmap/src/file/query.rs",
+      "blob": "b4745f5500ae5ff3db1b1fb49014ccec4ad72276"
+    },
+    {
+      "path": "crates/jmap/src/file/set.rs",
+      "blob": "c224909031fb7f1550b8374d07a5501491145c4d"
+    },
+    {
+      "path": "crates/jmap/src/file/writer.rs",
+      "blob": "ad65ac56fa201bd2b0c685b91a21d4c3f8fbf086"
+    },
+    {
+      "path": "crates/jmap/src/identity/get.rs",
+      "blob": "08467045c6c07724bb345fcf35fcecb18dc3b128"
+    },
+    {
+      "path": "crates/jmap/src/identity/mod.rs",
+      "blob": "f3241c62d97768c87569062b457203e7e889c051"
+    },
+    {
+      "path": "crates/jmap/src/identity/set.rs",
+      "blob": "867cf521c631f640e0d5ff55ad8a039714b050dd"
+    },
+    {
+      "path": "crates/jmap/src/lib.rs",
+      "blob": "f32e575035ca109c89241f9c60bce2eb95bbaa66"
+    },
+    {
+      "path": "crates/jmap/src/mailbox/get.rs",
+      "blob": "df5a38a87608c2fffbe0fc6bf25ba3c4ee516bde"
+    },
+    {
+      "path": "crates/jmap/src/mailbox/mod.rs",
+      "blob": "c036acc9c768a4e52d5e4be4d834e96d6139a995"
+    },
+    {
+      "path": "crates/jmap/src/mailbox/query.rs",
+      "blob": "d82a59a0fcab7bcaf35ae139bb2a665a2cc619ec"
+    },
+    {
+      "path": "crates/jmap/src/mailbox/set.rs",
+      "blob": "63a4b352357c80422c5fe095fe4b97e1803e88d8"
+    },
+    {
+      "path": "crates/jmap/src/participant_identity/changes.rs",
+      "blob": "3a9821d6f7bce595ea793cbcb1ef105c8ba760e4"
+    },
+    {
+      "path": "crates/jmap/src/participant_identity/get.rs",
+      "blob": "8f871fb39bb87ce9d90b893c416da3c99896069a"
+    },
+    {
+      "path": "crates/jmap/src/participant_identity/mod.rs",
+      "blob": "93448a2b02f99f5a9d76089b63170f67f646254c"
+    },
+    {
+      "path": "crates/jmap/src/participant_identity/set.rs",
+      "blob": "be7ae60b688bf64fdcb8f62aedb2bf10c8d828f4"
+    },
+    {
+      "path": "crates/jmap/src/principal/availability.rs",
+      "blob": "719c0d543355f58ec6185d4049b45bc8b64aecfd"
+    },
+    {
+      "path": "crates/jmap/src/principal/get.rs",
+      "blob": "86e3e08f5b086f18e47d1bebbb24124aa738d4b7"
+    },
+    {
+      "path": "crates/jmap/src/principal/mod.rs",
+      "blob": "db9e3b2eacea112d79b13835d893d76141a43f06"
+    },
+    {
+      "path": "crates/jmap/src/principal/query.rs",
+      "blob": "0d96907e223026ae4f0b4ef8822ebfdf46cdf698"
+    },
+    {
+      "path": "crates/jmap/src/push/get.rs",
+      "blob": "4690e6e50d8f553de69bd5e6312e57d8cbdccc90"
+    },
+    {
+      "path": "crates/jmap/src/push/mod.rs",
+      "blob": "f460abaae14baf84e194ef660b7b054121681a86"
+    },
+    {
+      "path": "crates/jmap/src/push/set.rs",
+      "blob": "beec686b78ec27c0fd8cc3d0d7dd46f247ca2911"
+    },
+    {
+      "path": "crates/jmap/src/quota/get.rs",
+      "blob": "5116e4f264bd5cefe0dfb5aecbc8d8bd63342592"
+    },
+    {
+      "path": "crates/jmap/src/quota/mod.rs",
+      "blob": "4a00acaa1ce047533d8f187fcf145ec7e89a8ffe"
+    },
+    {
+      "path": "crates/jmap/src/quota/query.rs",
+      "blob": "ab137c129c720f9a8fb1a80068632cd8757e572c"
+    },
+    {
+      "path": "crates/jmap/src/registry/get.rs",
+      "blob": "874cff8666fae0e946d950fe6dc03139ecdcabd9"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/account.rs",
+      "blob": "390105dcfd69ffc24ed9c9aa01cbb5ee304e83a4"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/action.rs",
+      "blob": "740898ff62171508830a0a88c6f867a92ba3907d"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/archived_item.rs",
+      "blob": "c1895cd863df4ff2ed7966720269ee10ee745cf6"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/bootstrap.rs",
+      "blob": "31795c0f2c88aa1b1c4b278f3f0eda16500a9db4"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/cluster.rs",
+      "blob": "d026caf31a1bd8c257c4980c349323b117bc80c4"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/dkim.rs",
+      "blob": "376dfbdc90c2cf3d6efd91634c02fc583587a9ab"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/domain.rs",
+      "blob": "276da1df97d2b1badd0fb878635308d9593edbc4"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/external_public_key.rs",
+      "blob": "857bc9dd3cfb6b5792d4ccfbfe9e8dd3e245bc47"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/index_queue.rs",
+      "blob": "a339d198b3cca369f4744eafaf962cc6a80918e0"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/log.rs",
+      "blob": "29e5c7215b817e73c2bd70b7d5002331b3604472"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/masked_email.rs",
+      "blob": "4c1a0aa3524eab97a843dc154eaa10eaef19f956"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/mod.rs",
+      "blob": "fdebec4a0e078d9efea5473844889960f5691ec7"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/oauth_client.rs",
+      "blob": "09af670e42f939b8bbbe5169d71abaf40f7cb347"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/passkey.rs",
+      "blob": "1531939d35fc17493f16c50877663580d18cd472"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/principal.rs",
+      "blob": "42e9c34937e9d780d4b70fe6bc1d8036aac1a0da"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/public_key.rs",
+      "blob": "67a95012f372281ca4c41e82a5b551118daedb29"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/queued_message.rs",
+      "blob": "9a867ab3ae2bba7d3b8a1296949f32bcde983d24"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/report.rs",
+      "blob": "82538bc78db64335b7b5acbbbddd7bc477f32ad0"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/sieve.rs",
+      "blob": "dbd5dd20f654cd770200665cb95241954fc60bb0"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/spam_sample.rs",
+      "blob": "a9d5cbc1b6e453babac59450c657468bacc3dc47"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/symmetric_key.rs",
+      "blob": "b141649f3fb38e0fc88ff15fafc8cdd61759109a"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/task.rs",
+      "blob": "e7ef607c6422a057f249ea23997a491b4685fdba"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/telemetry.rs",
+      "blob": "31cdba67bed97aa5d826bea6e9c840856b208035"
+    },
+    {
+      "path": "crates/jmap/src/registry/mapping/tls.rs",
+      "blob": "f28888faaaf4b2d250fbe3e518834b257f3e7a7e"
+    },
+    {
+      "path": "crates/jmap/src/registry/mod.rs",
+      "blob": "fa73f4a4af8009b658776e3adb57a9e4f2f76e8e"
+    },
+    {
+      "path": "crates/jmap/src/registry/query.rs",
+      "blob": "46b7747164ab09230b2c66f7771a916e6d613f0e"
+    },
+    {
+      "path": "crates/jmap/src/registry/set.rs",
+      "blob": "0d625771744b15595768b973e95a69eff1a05e61"
+    },
+    {
+      "path": "crates/jmap/src/share_notification/get.rs",
+      "blob": "801cb7316575bc1edfb748fd0845db75c36dd4e7"
+    },
+    {
+      "path": "crates/jmap/src/share_notification/mod.rs",
+      "blob": "c036acc9c768a4e52d5e4be4d834e96d6139a995"
+    },
+    {
+      "path": "crates/jmap/src/share_notification/query.rs",
+      "blob": "556dceff907464791d9854608d3d016698eb6a16"
+    },
+    {
+      "path": "crates/jmap/src/share_notification/set.rs",
+      "blob": "3cf30b9cfa58584be1e3a39f0c953e1cd8104915"
+    },
+    {
+      "path": "crates/jmap/src/sieve/get.rs",
+      "blob": "dc2bda7009c43bf7cc84f01db65bc134edcbeda1"
+    },
+    {
+      "path": "crates/jmap/src/sieve/mod.rs",
+      "blob": "3127224ce663cc4cb80d405d61391dbca7fcdf6a"
+    },
+    {
+      "path": "crates/jmap/src/sieve/query.rs",
+      "blob": "1a029e7c3b7b0c9cf7ccde48faed153d51a19934"
+    },
+    {
+      "path": "crates/jmap/src/sieve/set.rs",
+      "blob": "a7be5d88919e4a443ba39955bca50ee4051ab11e"
+    },
+    {
+      "path": "crates/jmap/src/sieve/validate.rs",
+      "blob": "84b33c252e7b180fa090161869df7d72682c1fa7"
+    },
+    {
+      "path": "crates/jmap/src/submission/get.rs",
+      "blob": "f430c551942e0477bf9f4bfbf92d633578cde065"
+    },
+    {
+      "path": "crates/jmap/src/submission/mod.rs",
+      "blob": "c036acc9c768a4e52d5e4be4d834e96d6139a995"
+    },
+    {
+      "path": "crates/jmap/src/submission/query.rs",
+      "blob": "73c6de429481a52f4f186b1ccde64f7219b7a852"
+    },
+    {
+      "path": "crates/jmap/src/submission/set.rs",
+      "blob": "6ba016c666cf5863f88150f2bae5ae49c00f40cb"
+    },
+    {
+      "path": "crates/jmap/src/thread/get.rs",
+      "blob": "a860c9a3a333bab95e1209e3d73ef478f33bbcaf"
+    },
+    {
+      "path": "crates/jmap/src/thread/mod.rs",
+      "blob": "9f12b321c3a964de2075ca34ee04082aa5c516b5"
+    },
+    {
+      "path": "crates/jmap/src/vacation/get.rs",
+      "blob": "8a0956136f0a86d7a6965573f372c0dcad6fd817"
+    },
+    {
+      "path": "crates/jmap/src/vacation/mod.rs",
+      "blob": "f460abaae14baf84e194ef660b7b054121681a86"
+    },
+    {
+      "path": "crates/jmap/src/vacation/set.rs",
+      "blob": "c73bc20b705ecd2614f5fec83ade112c21228ffd"
+    },
+    {
+      "path": "crates/jmap/src/websocket/mod.rs",
+      "blob": "cac751dcec6d60c622fd84b4a7c01c113d9e3963"
+    },
+    {
+      "path": "crates/jmap/src/websocket/stream.rs",
+      "blob": "a1dc19a7cf9f1ebe2f42385f9a040bc2b450e14a"
+    },
+    {
+      "path": "crates/jmap/src/websocket/upgrade.rs",
+      "blob": "23300700c34538e3474fdffe6cae0c58b345792c"
+    }
+  ]
+}

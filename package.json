@@ -14,7 +14,10 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "check:native": "cargo check --manifest-path src-tauri/Cargo.toml"
+    "check:native": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "audit:jmap": "node scripts/audit-jmap.mjs",
+    "check:jmap": "node scripts/audit-jmap.mjs --check",
+    "test:jmap-audit": "node --test scripts/audit-jmap.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -70,6 +73,7 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@babel/parser": "^7.28.5",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@tauri-apps/cli": "^2.0.0",
