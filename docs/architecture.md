@@ -58,18 +58,24 @@ Am 17. November 2026 am aktuellen Arbeitsstand ausgeführt:
 Diese erneute Prüfung hat keine schreibenden Live-Tests ausgeführt. Die zuvor
 separat genehmigten Kalenderprüfungen und ihre Grenzen sind in
 [calendar-live-validation.md](calendar-live-validation.md) dokumentiert.
-Der zusätzliche Versuch, den aktuellen Build im echten Desktopfenster zu prüfen,
-konnte nicht abgeschlossen werden: Computer Use verweigerte den Zugriff auf
-Herakles Mail. Ein vollständiger App-Neustart mit Offline-Anzeige und anschließender
-Reconnect-Freigabe im nativen Fenster bleibt deshalb offen. Der erfolgreiche
-Offline-Live-Test prüft den Produktionsworker und redb-Neustart, keinen Fensterneustart.
+Nach Freigabe von Computer Use wurde am 17. November der aktuelle native
+Entwicklungsbuild von b69f3f1 mit HERAKLES_FORCE_READ_ONLY=1 im echten
+Windows-Fenster geprüft: Kalender öffnen, Offline-Modus aktivieren, vorhandenen
+lokalen Termin anzeigen, App vollständig schließen und neu starten. Offline-Modus
+und Kalenderdaten blieben erhalten; die Oberfläche zeigte Nur Lesen und keine
+ausstehenden Aktionen. Danach wurde der Reconnect erfolgreich abgeschlossen (Online / Verbunden,
+Abgleich abgeschlossen); die Kalenderdaten blieben sichtbar.
+Es wurden keine Termine verändert oder neuen Testobjekte angelegt. Eine gezielte
+Freigabe eines gehaltenen Schreibauftrags im Fenster ist damit weiterhin nicht
+nachgewiesen; der frühere Live-Test deckt diesen Ablauf nur am Produktionsworker ab.
 Linux/macOS sind ebenfalls nicht vollständig nativ validiert. Das Upstream-Submodul
 steht unverändert auf 03e7cd86f102bc66a589b7b02d49523b00ae633a.
 
 ## Nächste Arbeit
 
-1. Kalenderablauf im echten Desktopfenster einschließlich App-Neustart,
-   Offline-Anzeige und Reconnect-Freigabe prüfen. Keine verbrauchten Live-Quittungen
+1. Gezielte Reconnect-Freigabe eines gehaltenen Kalender-Schreibauftrags im echten
+   Desktopfenster prüfen; dafür eine neue begrenzte Live-Freigabe einholen. Der
+   lesende Offline-/App-Neustart ist nachgewiesen. Keine verbrauchten Quittungen
    zurücksetzen oder bestehende Termine ändern.
 2. Versand mit Anhängen und FileNode-Erstellung separat freigeben und live prüfen;
    Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.

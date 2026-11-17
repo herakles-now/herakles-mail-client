@@ -73,3 +73,22 @@ zweites Senden im naechsten Worker-Lauf, anschliessend lesender Servernachweis.
 Der Testtermin ist geloescht. Betriebssystemnetz und laufendes Desktopfenster
 wurden dabei nicht beendet; getestet wurde der native Offline-Modus mit lokaler
 redb-Wiedereroeffnung. Echte externe RSVP-Zustellung ist ein separater Nachweis.
+
+
+## Desktop-Nachweis nach App-Freigabe
+
+Am 17. November 2026 wurde der aktuelle Entwicklungsbuild von b69f3f1
+(natives Debug-Binary mit Vite auf Port 1420) im echten Windows-Fenster mit
+HERAKLES_FORCE_READ_ONLY=1 geprüft. Nach Öffnen des Kalenders und Umschalten
+auf den nativen Offline-Modus blieb ein bereits gespeicherter Termin sichtbar.
+Nach vollständigem Schließen und erneutem Starten desselben Builds blieben
+Offline-Modus und Kalenderdaten erhalten. Reconnect endete mit Online / Verbunden
+und Abgleich abgeschlossen. Die Anzeige blieb Nur Lesen; es gab vor und nach
+dem Test keine ausstehenden Aktionen. Keine Termine wurden verändert, keine
+Testobjekte angelegt und keine früheren Live-Quittungen zurückgesetzt.
+
+Dieser Nachweis ergänzt den vorherigen Worker-/redb-Test um den echten
+Fensterneustart und lesenden Reconnect. Er weist keine Freigabe eines gehaltenen
+Schreibauftrags im Fenster und keine externe RSVP-Zustellung nach. Die zuvor
+geöffnete Root-EXE war noch vom 13. November; der maßgebliche Nachweis wurde
+deshalb mit src-tauri/target/debug/herakles-mail.exe wiederholt.
