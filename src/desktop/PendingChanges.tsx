@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAuthStore } from '@/stores/auth-store';
 import { useEmailStore } from '@/stores/email-store';
 import { useCalendarStore } from '@/stores/calendar-store';
+import { useContactStore } from '@/stores/contact-store';
+import { buildContactsPath } from '@/lib/deep-links';
 import { navigate } from './navigation';
 import { refreshLocalViews } from './bootstrap';
 
@@ -12,7 +14,7 @@ interface Change {
   sequence?: number;
   journalId?: number;
   objectId: string;
-  kind: 'mail' | 'draft' | 'send' | 'calendar' | 'file';
+  kind: 'mail' | 'draft' | 'send' | 'calendar' | 'file' | 'contact';
   title: string;
   action: string;
   requiresReview: boolean;
@@ -72,7 +74,8 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
   }, [refresh, connectivity]);
   useEffect(() => {
     if (connectivity === 'offline') prompted.current = false;
-    if (connectivity === 'online' && !prompted.current && rows.some((row) => row.requiresReview)) {
+    if (document.querySelector('.desktop-google-import[open]')) return;
+    if (connectivity === 'online' && !prompted.current && rows.some((row) => row.requiresReview && row.kind !== 'contact')) {
       prompted.current = true;
       setSelected(new Set());
       setOpen(true);
@@ -98,6 +101,12 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
         navigate('/de/calendar'); setOpen(false);
         window.setTimeout(() => window.dispatchEvent(new CustomEvent('desktop-open-calendar-event', { detail: sourced })), 100);
         return;
+      }
+      if (row.kind === 'contact') {
+        await refreshLocalViews();
+        const contact = useContactStore.getState().contacts.find((item) => (item.originalId || item.id) === row.objectId && (!item.accountId || item.accountId === row.accountId));
+        if (!contact) throw new Error('Dieser Kontakt ist nicht mehr lokal verfügbar.');
+        navigate(`/de${buildContactsPath({ contactId: contact.id })}`); setOpen(false); return;
       }
       if (row.kind === 'file') { const id = row.accountId === client.getFilesAccountId() ? row.objectId : `${row.accountId}:${row.objectId}`; navigate(`/de/files?preview=${encodeURIComponent(id)}`); setOpen(false); return; }
       const editSend = row.kind === 'send' && row.journalId != null && ['held', 'ready', 'blocked'].includes(row.status ?? 'held');

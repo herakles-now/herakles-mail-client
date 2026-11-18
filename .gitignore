@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Downloaded Google OAuth desktop credentials, wherever stored
+google-oauth-client.json
+client_secret*.json
+
 # Dependencies, build outputs and local tooling
 node_modules/
 dist/

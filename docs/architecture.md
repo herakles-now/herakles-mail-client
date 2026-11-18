@@ -19,9 +19,15 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
 - Kalenderereignisse und Dateimetadaten nutzen lokale Überlagerungen und das
   Schreibjournal. Neue Datei-Uploads und Composer-Anhänge werden ebenfalls
   lokal gehalten und als Abhängigkeiten freigegebener Aufträge hochgeladen.
-  Datei-Inhaltsersetzungen, Kontaktänderungen/-fotos und Kalenderverwaltung fehlen noch.
+  Datei-Inhaltsersetzungen, allgemeine Kontaktbearbeitung/-fotos und Kalenderverwaltung fehlen noch.
 - Kontakte und Adressbücher werden lesend über eine kontogetrennte native redb-Replik
   bereitgestellt. Suche, Details und freigegebene Adressbücher funktionieren offline.
+  Ein neuer, ausdrücklich ausgewählter Google-Import ergänzt Name, E-Mail und Telefon
+  über gehaltene ContactCard/set-Aufträge. Google wird nur im nativen Rust-Adapter
+  lesend angesprochen; OAuth-Tokens bleiben im OS-Schlüsselbund/Rust. Vorschau,
+  Dublettensperre und Konfliktvergleich lesen redb. Kein automatischer Import oder
+  Löschen; allgemeine Kontakt-UI-/Plugin-Writes bleiben gesperrt. Einrichtung und
+  noch fehlender Live-Nachweis: [Google-Import](google-contacts-import.md).
 - Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
   offline. Das Downloadlimit ist pro Konto einstellbar; FIFO-Bereinigung entfernt alte
   Downloads. Die Bereinigung lokaler Uploads bleibt offen.
@@ -48,10 +54,10 @@ Am 17. November 2026 am aktuellen Arbeitsstand ausgeführt:
   große Bundles und teilweise zugleich statische und dynamische Imports.
 - npm run check:native und cargo build --manifest-path src-tauri/Cargo.toml:
   erfolgreich; der abschließende Native-Check umfasst auch die Prozesssperre.
-- npm run test:native: 89 bestanden, 13 Live-Tests regulär ignoriert.
+- npm run test:native: 97 bestanden, 13 Live-Tests regulär ignoriert.
 - cargo fmt --manifest-path src-tauri/Cargo.toml -- --check: erfolgreich.
 - npm exec playwright -- test gegen Vite-Preview auf Port 1430:
-  acht Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
+  13 Tests bestanden, mit synthetischen Daten und nachgebildeter IPC-Grenze.
 - npm run test:jmap-audit: sieben Tests bestanden; npm run check:jmap erfolgreich.
 - node --test scripts/stage-release.test.mjs: drei Tests bestanden.
 
@@ -81,8 +87,8 @@ steht unverändert auf 03e7cd86f102bc66a589b7b02d49523b00ae633a.
    Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.
 3. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
    durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
-4. Kontaktänderungen über ein dauerhaftes Journal anbinden; weitere lokale
-   JMAP-Methoden und Kontaktfotos portieren.
+4. Google-Kontaktimport mit eigenem OAuth-Client separat live validieren. Danach
+   allgemeine Kontaktbearbeitung, weitere lokale JMAP-Methoden und Kontaktfotos ergänzen.
 5. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
    unterstützen; Verwaltung lokaler Uploads ergänzen. Downloadlimits und
    kontogetrennte FIFO-Bereinigung sind bereits implementiert.
@@ -1241,3 +1247,14 @@ alle fuenf Phasen und Cleanup bestaetigt. Die externe Zustellung der vorherigen
 Einladung/Absage an Gmail bleibt davon unabhaengig unbestaetigt.
 Stand: 88 native Standardtests erfolgreich, 13 bewusst ignorierte Live-Tests;
 der zusaetzlich explizit gestartete Offline-Live-Test bestand.
+
+
+### Abbruch der Kontoeinrichtung
+
+Konto hinzufügen ist ein modaler Dialog mit Abbrechen, Schließen und Escape.
+Eingegebene Zugangsdaten werden beim Abbruch verworfen, ohne native Kontospeicherung
+aufzurufen. In einem leeren Profil führt Abbrechen zu einer neutralen Startansicht,
+die erneute Einrichtung und Wechsel zu vorhandenen Profilen anbietet. Ein bereits
+angelegtes leeres Profil wird nicht automatisch gelöscht. Während der gestarteten
+nativen Verbindungsprüfung/Speicherung sind Felder und Abbruch gesperrt, weil der
+bestehende kombinierte IPC-Aufruf noch keine sichere laufende Abbruchgrenze bietet.

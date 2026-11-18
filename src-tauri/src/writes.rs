@@ -852,7 +852,9 @@ pub(crate) async fn sync_pending_changes_inner(
                     )?,
                 }
             } else {
-                let capability = if entry.kind == "calendar" {
+                let capability = if entry.kind == "contact" {
+                    sync::CONTACTS
+                } else if entry.kind == "calendar" {
                     sync::CALENDARS
                 } else {
                     sync::FILES
@@ -866,6 +868,14 @@ pub(crate) async fn sync_pending_changes_inner(
                         }
                     };
                 writable(&store, &config, &account, capability)?;
+                if entry.kind == "contact" {
+                    if crate::google_contacts::validate_entry(store, config, &account, &entry)
+                        .is_err()
+                    {
+                        journal::finish(store, &scope, entry.id, Some("blocked"), Some("Kontakt oder Adressbuch ist nicht mehr beschreibbar. Bitte neu prüfen."))?;
+                        continue;
+                    }
+                }
                 let resolved = match journal::resolve_calls(&store, &scope, &entry.calls) {
                     Ok(calls) => calls,
                     Err(_) => {
@@ -954,7 +964,11 @@ pub(crate) async fn transmit_object_change(
                 _ => "notDestroyed",
             };
             let rejected = response[error_field][&key].is_object();
-            if confirmed && !rejected && response["newState"].is_string() {
+            if confirmed
+                && !rejected
+                && response["newState"].is_string()
+                && (entry.kind != "contact" || response["accountId"] == args["accountId"])
+            {
                 if action == "create" {
                     journal::remember_created(
                         store,
@@ -1352,4 +1366,77 @@ mod tests {
         config.username = "another-login".into();
         assert!(writable(&store, &config, "allowed", sync::CALENDARS).is_err());
     }
+}
+
+/// Contact-only path through the production write worker. Never releases or
+/// transmits other queued object types, accounts, or unselected contacts.
+pub(crate) async fn sync_contact_selection(
+    store: &Store,
+    config: &TestConfig,
+    network: &NetworkMode,
+    account: &str,
+    ids: &[u64],
+) -> Result<usize, String> {
+    crate::require_network(network)?;
+    writable(store, config, account, sync::CONTACTS)?;
+    let scope = sync::scope(config, account);
+    let remote = match sync::Connection::discover_for(config, account, sync::CONTACTS).await {
+        Ok(remote) => remote,
+        Err(error) => {
+            hold_contact_selection(store, &scope, ids)?;
+            return Err(error.message());
+        }
+    };
+    transmit_contact_selection(store, config, network, account, ids, &remote).await
+}
+fn hold_contact_selection(store: &Store, scope: &str, ids: &[u64]) -> Result<(), String> {
+    for entry in journal::entries(store, scope)?
+        .into_iter()
+        .filter(|e| e.kind == "contact" && e.status == "ready" && ids.contains(&e.id))
+    {
+        journal::finish(store, scope, entry.id, Some("held"), None)?;
+    }
+    Ok(())
+}
+pub(crate) async fn transmit_contact_selection(
+    store: &Store,
+    config: &TestConfig,
+    network: &NetworkMode,
+    account: &str,
+    ids: &[u64],
+    remote: &impl Remote,
+) -> Result<usize, String> {
+    writable(store, config, account, sync::CONTACTS)?;
+    let scope = sync::scope(config, account);
+    let mut confirmed = 0;
+    for id in ids {
+        if !network.enabled() {
+            hold_contact_selection(store, &scope, ids)?;
+            break;
+        }
+        let Some(entry) = journal::entries(store, &scope)?
+            .into_iter()
+            .find(|e| e.id == *id && e.kind == "contact" && e.status == "ready")
+        else {
+            continue;
+        };
+        if crate::google_contacts::validate_entry(store, config, account, &entry).is_err() {
+            journal::finish(
+                store,
+                &scope,
+                entry.id,
+                Some("blocked"),
+                Some("Kontakt oder Adressbuch ist nicht mehr beschreibbar. Bitte neu prüfen."),
+            )?;
+            continue;
+        }
+        let (method, mut args, _) = entry.calls[0].clone();
+        if let Some(state) = &entry.base_state {
+            args["ifInState"] = json!(state);
+        }
+        if transmit_object_change(store, remote, &scope, &entry, &method, args).await? {
+            confirmed += 1;
+        }
+    }
+    Ok(confirmed)
 }

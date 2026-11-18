@@ -47,9 +47,6 @@
 .desktop-profile-panel form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .desktop-profile-panel button:disabled { opacity: .5; cursor: not-allowed; }
 .desktop-profile-error { margin: 0; color: #c23737; line-height: 1.4; }
-.desktop-setup-overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: #0008; }
-.desktop-setup-overlay .desktop-account-setup { min-height: auto; width: min(100%, 520px); border-radius: 16px; }
-.desktop-setup-cancel { position: fixed; top: 16px; right: 16px; z-index: 201; border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
 .desktop-account-setup { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--color-background); color: var(--color-foreground); font-family: system-ui, sans-serif; }
 .desktop-account-card { display: grid; gap: 16px; width: min(100%, 460px); padding: 32px; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-card); box-shadow: 0 16px 48px #0002; }
 .desktop-account-card h1 { margin: 0; font-size: 24px; font-weight: 650; }
@@ -75,3 +72,28 @@
 .desktop-cache-body button { padding: 7px 12px; border: 1px solid var(--color-border); border-radius: 5px; background: var(--color-background); color: inherit; cursor: pointer; }
 .desktop-cache-body button:disabled { opacity: .5; cursor: default; }
 .desktop-cache-body [role=alert] { color: #c23737; }
+
+.desktop-contacts-notice { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.desktop-google-import { width: min(960px, 95vw); max-height: 90dvh; overflow: auto; padding: 24px; color: var(--color-foreground); background: var(--color-background); border: 1px solid var(--color-border); border-radius: 12px; }
+.desktop-google-import::backdrop { background: #0008; }
+.desktop-google-import header { display: flex; justify-content: space-between; gap: 16px; }
+.desktop-google-import h2 { font-size: 1.3rem; font-weight: 600; }
+.desktop-google-import p, .desktop-google-import section { margin: 12px 0; }
+.desktop-google-import label { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.desktop-google-import input:not([type=checkbox]), .desktop-google-import select { padding: 6px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-background); }
+.desktop-google-import button, .desktop-contacts-notice button { padding: 5px 9px; border: 1px solid var(--color-border); border-radius: 4px; margin-right: 8px; }
+.desktop-google-import button:disabled { opacity: .5; }
+.desktop-google-import table { width: 100%; text-align: left; border-collapse: collapse; }
+.desktop-google-import th, .desktop-google-import td { padding: 6px; border-bottom: 1px solid var(--color-border); vertical-align: top; overflow-wrap: anywhere; }
+.desktop-google-rows { max-height: 300px; overflow: auto; margin: 12px 0; }
+.desktop-google-import [role=alert] { color: #b91c1c; }
+
+.desktop-google-import { margin: auto; }
+
+.desktop-account-dialog { margin: auto; padding: 0; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-background); color: var(--color-foreground); }
+.desktop-account-dialog::backdrop { background: #0008; }
+.desktop-account-dialog .desktop-account-setup { min-height: auto; padding: 16px; }
+.desktop-account-heading { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--color-card); z-index: 1; }
+.desktop-account-card .desktop-account-close { flex: none; min-width: 36px; min-height: 36px; padding: 0; font-size: 24px; background: transparent; color: var(--color-foreground); border: 1px solid var(--color-border); }
+.desktop-account-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.desktop-account-card .desktop-account-cancel { background: transparent; color: var(--color-foreground); border: 1px solid var(--color-border); }

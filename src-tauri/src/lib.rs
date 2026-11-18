@@ -13,6 +13,8 @@ mod contacts;
 mod desktop;
 mod email_get;
 mod email_query;
+mod google_auth;
+mod google_contacts;
 mod journal;
 mod logging;
 mod push;
@@ -286,9 +288,14 @@ fn all_change_accounts(
         .into_iter()
         .flat_map(|a| a.keys())
         .filter(|id| {
-            ["urn:ietf:params:jmap:mail", sync::CALENDARS, sync::FILES]
-                .iter()
-                .any(|cap| sync::account_supports(&session, id, cap))
+            [
+                "urn:ietf:params:jmap:mail",
+                sync::CALENDARS,
+                sync::FILES,
+                sync::CONTACTS,
+            ]
+            .iter()
+            .any(|cap| sync::account_supports(&session, id, cap))
         })
         .cloned()
         .collect())
@@ -772,6 +779,7 @@ pub fn run() {
             }
         })
         .manage(SyncGate::default())
+        .manage(google_auth::GoogleGate::default())
         .manage(network_mode)
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
@@ -789,6 +797,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            google_auth::google_connect,
+            google_auth::google_disconnect,
+            google_auth::google_fetch_contacts,
+            google_contacts::google_import_status,
+            google_contacts::google_import_preview,
+            google_contacts::google_import_apply,
+            google_contacts::google_import_transfer,
             cache_settings::download_cache_usage,
             cache_settings::set_download_cache_limit,
             cached_session,

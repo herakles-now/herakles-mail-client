@@ -62,6 +62,10 @@ export async function refreshLocalViews(): Promise<void> {
     const range = useCalendarStore.getState().dateRange;
     if (range) await useCalendarStore.getState().fetchEvents(client, range.start, range.end, { silent: true });
   }
+  if (accountsFor(info.session, CONTACT_CAPABILITY).length) {
+    await useContactStore.getState().fetchAddressBooks(client);
+    await useContactStore.getState().fetchContacts(client);
+  }
   if (useFileStore.getState().client) await useFileStore.getState().refresh();
 }
 
@@ -252,6 +256,8 @@ async function synchronizeOnce() {
     const writesApplied = await step('pending_changes_failed', () => invoke<boolean>('sync_pending_changes'));
     // Read back accepted submissions and mutations before refreshing the visible stores.
     if (writesApplied) {
+      for (const id of contactAccounts) await attempt('sync_contacts', id);
+      if (contactAccounts.length) await useContactStore.getState().fetchContacts(client);
       for (const id of calendarAccounts) await attempt('sync_calendar', id);
       for (const id of mailAccounts) await attempt('sync_mail', id);
       for (const id of accountsFor(info.session, 'urn:ietf:params:jmap:filenode')) await attempt('sync_files', id);

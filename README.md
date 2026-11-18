@@ -114,3 +114,12 @@ For a read-only desktop inspection, set `HERAKLES_FORCE_READ_ONLY=1` in the
 launching process. Any presence of this variable forces loaded accounts into
 read-only mode without changing stored credentials or account settings. Remove
 the variable entirely before a subsequent normal launch.
+
+## Google contact import
+
+The desktop Contacts page offers a reviewed, one-way Google → Stalwart import for
+names, email addresses and phone numbers. OAuth setup, scope, queue approval and
+limitations are described in [Google contact import](docs/google-contacts-import.md).
+The app publisher configures a shared desktop OAuth client at native build time;
+users connect through their default browser without entering client credentials.
+The app registration is still required; live interoperability is not yet verified.

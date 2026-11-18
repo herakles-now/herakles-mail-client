@@ -115,7 +115,14 @@ fn authorize_method(read_only: bool, method: &str) -> Result<(), SyncError> {
     ]
     .contains(&method);
     if !allowed_read
-        && (read_only || !["Email/set", "CalendarEvent/set", "FileNode/set"].contains(&method))
+        && (read_only
+            || ![
+                "Email/set",
+                "CalendarEvent/set",
+                "FileNode/set",
+                "ContactCard/set",
+            ]
+            .contains(&method))
     {
         return Err(SyncError::Local(
             if read_only {
@@ -1914,11 +1921,11 @@ mod tests {
         assert!(authorize_method(false, "Email/set").is_ok());
         assert!(authorize_method(false, "CalendarEvent/set").is_ok());
         assert!(authorize_method(false, "FileNode/set").is_ok());
+        assert!(authorize_method(false, "ContactCard/set").is_ok());
         for method in [
             "Mailbox/set",
             "EmailSubmission/set",
             "Unknown/get",
-            "ContactCard/set",
             "AddressBook/set",
         ] {
             assert!(authorize_method(false, method).is_err());
@@ -1950,6 +1957,7 @@ mod tests {
             "Calendar/set",
             "CalendarEvent/set",
             "ParticipantIdentity/set",
+            "ContactCard/set",
         ] {
             assert!(authorize_method(true, method).is_err());
         }

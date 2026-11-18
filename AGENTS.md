@@ -6,7 +6,7 @@ Build Herakles Mail, a JMAP desktop client for Windows, Linux, and macOS with Re
 
 Use Bulwark's original components and extension APIs. The pinned, unchanged submodule `upstream/bulwark` is the upstream foundation. Preserve LICENSE and NOTICE. Use explicit desktop adapters or checked build transforms instead of modifying the submodule or inventing a separate plugin format.
 
-All UI data access must use redb through native IPC, including when online. Only the Rust synchronization worker may contact Stalwart. Keep credentials in Rust. redb supplies persistence; implement JMAP state tracking, deletions, retries, and conflicts explicitly. See `docs/architecture.md` and `docs/addons.md` for implemented behavior and limitations.
+All UI data access must use redb through native IPC, including when online. Only the Rust synchronization worker may contact Stalwart. The explicitly requested one-way Google Contacts adapter may read Google through its native Rust OAuth/People worker only; the UI still reads persisted redb data through IPC and tokens remain in Rust/OS credentials. Google writes remain unsupported. Keep credentials in Rust. redb supplies persistence; implement JMAP state tracking, deletions, retries, and conflicts explicitly. See `docs/architecture.md` and `docs/addons.md` for implemented behavior and limitations.
 
 ## Project Structure
 

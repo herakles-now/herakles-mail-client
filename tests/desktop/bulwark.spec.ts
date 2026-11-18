@@ -262,6 +262,24 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   await page.getByRole('button', { name: 'Posteingang', exact: true }).first().click();
   await expect(page.getByText('Offline-Nachricht aus redb').first()).toBeVisible();
   await expect(page.getByText(writable ? 'Test-Schreibmodus' : 'Nur Lesen', { exact: false })).toBeVisible();
+  // Adding an account is cancellable before any native account write, including on a small window.
+  for (const dismiss of ['cancel', 'close', 'escape']) {
+    await page.setViewportSize({ width: 640, height: 480 });
+    await page.getByText('Profile & Konten', { exact: true }).click();
+    await page.getByRole('button', { name: 'Konto hinzufügen', exact: true }).click();
+    const setup = page.getByRole('dialog', { name: 'Konto hinzufügen', exact: true });
+    await expect(setup).toBeVisible();
+    await expect(setup.getByLabel('Benutzername', { exact: true })).toHaveValue('');
+    await setup.getByLabel('Benutzername', { exact: true }).fill('unsaved@example.test');
+    await setup.getByLabel('Passwort', { exact: true }).fill('synthetic-unsaved');
+    if (dismiss === 'cancel') await setup.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+    else if (dismiss === 'close') await setup.getByRole('button', { name: 'Kontoeinrichtung schließen', exact: true }).click();
+    else await page.keyboard.press('Escape');
+    await expect(setup).toHaveCount(0);
+    expect(calls.filter((command) => ['setup_account', 'add_profile_account'].includes(command))).toHaveLength(0);
+  }
+  await page.setViewportSize({ width: 1440, height: 960 });
+
   await page.getByText('Offline-Nachricht aus redb', { exact: true }).click();
   await expect(page.getByText('Lokal verfügbarer Testinhalt.', { exact: true })).toBeVisible();
   await expect(page.getByText('Synthetische Einladung', { exact: true }).first()).toBeVisible();
@@ -406,7 +424,8 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Team Kontakt', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Lokales Adressbuch', { exact: true }).first()).toBeVisible();
-  await expect(page.locator('.desktop-contacts-notice')).toContainText('Nur Lesen');
+  await expect(page.locator('.desktop-contacts-notice')).toContainText('Direkte Bearbeitung');
+  await expect(page.getByRole('button', { name: 'Google-Kontakte übernehmen', exact: true })).toBeVisible();
   const contactSearchBox = page.getByRole('searchbox', { name: /Kontakte durchsuchen|Kontakte suchen/ }).first();
   await contactSearchBox.fill('ada');
   await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();

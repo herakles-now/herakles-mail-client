@@ -788,9 +788,9 @@
     "requestSites": 227,
     "transportSites": 73,
     "statuses": {
-      "partial": 20,
+      "partial": 21,
       "fallback": 4,
-      "missing": 51,
+      "missing": 50,
       "reference-only": 0
     }
   },
@@ -2234,7 +2234,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 286
+          "line": 296
         }
       ],
       "stalwart": [
@@ -2249,7 +2249,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 688
+          "line": 706
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -2603,7 +2603,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 286
+          "line": 296
         }
       ],
       "stalwart": [
@@ -2618,7 +2618,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 688
+          "line": 706
         }
       ],
       "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung.",
@@ -2903,7 +2903,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -2969,7 +2969,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -3828,7 +3828,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -5064,25 +5064,25 @@
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names(",
           "name": "calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names",
-          "line": 1032
+          "line": 1088
         },
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn calendar_versions_reject_stale_state_and_keep_changes_durable(",
           "name": "calendar_versions_reject_stale_state_and_keep_changes_durable",
-          "line": 1222
+          "line": 1236
         },
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results(",
           "name": "calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results",
-          "line": 1109
+          "line": 1123
         },
         {
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn folded_calendar_reply_keeps_scheduling_request_across_restart(",
           "name": "folded_calendar_reply_keeps_scheduling_request_across_restart",
-          "line": 979
+          "line": 1035
         },
         {
           "file": "src-tauri/src/calendar_roundtrip.rs",
@@ -5485,7 +5485,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -5621,7 +5621,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -5702,7 +5702,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -5755,7 +5755,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 286
+          "line": 296
         }
       ],
       "stalwart": [
@@ -5770,7 +5770,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 688
+          "line": 706
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -5979,7 +5979,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 286
+          "line": 296
         }
       ],
       "stalwart": [
@@ -5994,7 +5994,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 688
+          "line": 706
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -6166,17 +6166,22 @@
     },
     {
       "method": "ContactCard/set",
-      "status": "missing",
+      "status": "partial",
       "local": [
         {
-          "file": "src/desktop/bootstrap.ts",
-          "anchor": "const rejectContactWrite",
-          "line": 27
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "pub(crate) fn apply(",
+          "line": 484
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub(crate) async fn transmit_object_change(",
+          "line": 928
         },
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 286
+          "line": 296
         }
       ],
       "stalwart": [
@@ -6188,13 +6193,19 @@
       ],
       "tests": [
         {
-          "file": "src-tauri/src/contacts.rs",
-          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
-          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 688
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "fn import_is_held_atomic_survives_restart_and_never_duplicates(",
+          "name": "import_is_held_atomic_survives_restart_and_never_duplicates",
+          "line": 908
+        },
+        {
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "fn contact_worker_requires_exact_ack_and_never_replays_uncertain_creates(",
+          "name": "contact_worker_requires_exact_ack_and_never_replays_uncertain_creates",
+          "line": 1112
         }
       ],
-      "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung.",
+      "limitations": "Ausschließlich ausgewählte einseitige Google-Importe: Neuanlage und Änderungen zuvor importierter Kontakte (Name, E-Mail, Telefon), dauerhaft vorgemerkt und durch den eigenen Übertragungsbutton ausschließlich für die gewählte Kontaktauswahl freigegeben. Kein generischer ContactCard/set-UI-/Pluginpfad, keine Löschungen oder automatische Zusammenführung. Google OAuth/People und echte Stalwart-Kontaktschreibvorgänge noch nicht live validiert.",
       "occurrences": [
         {
           "method": "ContactCard/set",
@@ -6405,7 +6416,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -6543,7 +6554,7 @@
           "file": "src-tauri/src/sync.rs",
           "anchor": "fn paginated_changes_remove_destroyed_objects_and_advance_each_page(",
           "name": "paginated_changes_remove_destroyed_objects_and_advance_each_page",
-          "line": 2207
+          "line": 2215
         }
       ],
       "limitations": "Lokaler Responder liefert cannotCalculateChanges; Bulwark muss voll neu lesen. Rust-Worker nutzt Server-Email/changes separat. Test prueft den Worker, nicht lokale Deltas.",
@@ -6672,7 +6683,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -6760,12 +6771,12 @@
         {
           "file": "src-tauri/src/sync.rs",
           "anchor": "async fn get_emails(",
-          "line": 821
+          "line": 828
         },
         {
           "file": "src-tauri/src/sync.rs",
           "anchor": "pub async fn synchronize_projected_with_policy(",
-          "line": 1089
+          "line": 1096
         },
         {
           "file": "src-tauri/src/replica.rs",
@@ -6823,13 +6834,13 @@
           "file": "src-tauri/src/sync.rs",
           "anchor": "fn projection_upgrade_hydrates_headers_and_bodies_once_and_survives_restart(",
           "name": "projection_upgrade_hydrates_headers_and_bodies_once_and_survives_restart",
-          "line": 1297
+          "line": 1304
         },
         {
           "file": "src-tauri/src/sync.rs",
           "anchor": "fn failed_body_upgrade_keeps_old_checkpoint_and_requires_another_complete_snapshot(",
           "name": "failed_body_upgrade_keeps_old_checkpoint_and_requires_another_complete_snapshot",
-          "line": 1367
+          "line": 1374
         },
         {
           "file": "src-tauri/src/desktop.rs",
@@ -8701,7 +8712,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -11696,7 +11707,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -11762,7 +11773,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "methodCalls.every(([method]) => method === 'EmailSubmission/get'",
-          "line": 120
+          "line": 124
         }
       ],
       "stalwart": [
@@ -12266,7 +12277,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "methodCalls.every(([method]) => method === 'EmailSubmission/get'",
-          "line": 120
+          "line": 124
         }
       ],
       "stalwart": [
@@ -12506,7 +12517,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "__DESKTOP_QUEUE_SUBMISSION__",
-          "line": 88
+          "line": 92
         },
         {
           "file": "src-tauri/src/writes.rs",
@@ -12526,7 +12537,7 @@
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay(",
           "name": "offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay",
-          "line": 892
+          "line": 948
         }
       ],
       "limitations": "Nur strukturierter Versandpfad mit Email/set + Submission/set/get und dauerhaftem Journal. Generische Aufrufe abgelehnt; bestimmtes Cleanup lokal bestaetigt. Kein Live-Versandnachweis.",
@@ -13776,7 +13787,7 @@
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes(",
           "name": "file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes",
-          "line": 1020
+          "line": 1034
         }
       ],
       "limitations": "Metadaten aus redb, vereinfachte Query. Set ueber Journal mit lokalen Uploadabhaengigkeiten; Inhaltsersetzung und volle Batch/Referenzparitaet fehlen. Keine Live-FileNode-Aenderungen.",
@@ -14167,7 +14178,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "methodCalls.every(([method]) => method === 'Identity/get')",
-          "line": 97
+          "line": 101
         },
         {
           "file": "src-tauri/src/writes.rs",
@@ -14630,7 +14641,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -14877,7 +14888,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -14985,7 +14996,7 @@
           "file": "src-tauri/src/sync.rs",
           "anchor": "fn paginated_changes_remove_destroyed_objects_and_advance_each_page(",
           "name": "paginated_changes_remove_destroyed_objects_and_advance_each_page",
-          "line": 2207
+          "line": 2215
         }
       ],
       "limitations": "Lokaler Responder liefert cannotCalculateChanges; Bulwark muss voll neu lesen. Rust-Worker nutzt Server-Email/changes separat. Test prueft den Worker, nicht lokale Deltas.",
@@ -16665,7 +16676,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17101,7 +17112,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17162,7 +17173,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17578,7 +17589,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17654,7 +17665,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17723,7 +17734,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -17821,7 +17832,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18052,7 +18063,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18225,7 +18236,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18355,7 +18366,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18446,7 +18457,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18527,7 +18538,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18580,7 +18591,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -18760,7 +18771,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19051,7 +19062,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19344,7 +19355,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19532,7 +19543,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19660,7 +19671,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19721,7 +19732,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19787,7 +19798,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -19981,7 +19992,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20131,7 +20142,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20249,7 +20260,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20310,7 +20321,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20366,7 +20377,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20481,7 +20492,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20571,7 +20582,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20627,7 +20638,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20853,7 +20864,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20914,7 +20925,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -20964,7 +20975,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21025,7 +21036,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21127,7 +21138,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21216,7 +21227,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21277,7 +21288,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21333,7 +21344,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -21428,7 +21439,7 @@
         {
           "file": "src/desktop/bootstrap.ts",
           "anchor": "const response = await invoke<import('@/lib/jmap/offline-hooks').OfflineResponse>('local_jmap'",
-          "line": 124
+          "line": 128
         }
       ],
       "stalwart": [
@@ -23608,23 +23619,24 @@
     "src-tauri/src/calendar.rs": "52f9f913c303f1d08344f44a9def4640756e4f59fa4147aa02b6cd7725a0720c",
     "src-tauri/src/calendar_parse.rs": "777528faf545058ac74770b5a9f8f7fc830638548acc9ab7e16f55bb58f080a4",
     "src-tauri/src/calendar_roundtrip.rs": "439f00a3d1d8f2e3513cf38c01e6bd0b1175f2476d72e6dba4be92b908b47883",
-    "src-tauri/src/contacts.rs": "6a877af358505fa706e6fe01666e466b828364742c58515423af4b685cf664d2",
+    "src-tauri/src/contacts.rs": "68fa66698e343618da0c1d31f84bfb80ea555da9d6b9affa65008a3c36554620",
     "src-tauri/src/desktop.rs": "5f77205ec1a7e772d93bfedacbba49f1be9f4aa740c0b9d3c5a1e30cbf7c4df1",
     "src-tauri/src/email_get.rs": "ee37043e10aa15c2ea9e385f57cdb3ec7d87c0d74ee09b63b6d09181400a183f",
-    "src-tauri/src/journal.rs": "87adab2da28951bb0dda778900ae0f64a3943be38b3125e1f564d54d1546fbb6",
-    "src-tauri/src/lib.rs": "e45a3648da550dbc7dbd23be16b604b30e9070c6ed2afe980e79945d47098624",
+    "src-tauri/src/google_contacts.rs": "dedf46f8be8c9e11ca6774ed16c9dab06151c6f68f9aa01b3d3b514bb5b7e09d",
+    "src-tauri/src/journal.rs": "3ee30126dbff2f4491d460913e676829a0bc9db8a9a3c26ea597751c31cea078",
+    "src-tauri/src/lib.rs": "7998070d502364af099335c0a5f97835166855d0e22fc8a80909934b1497851f",
     "src-tauri/src/push.rs": "bbb9110bd855a3a87fec10bf176a120274d700dcf52342c8786ae80a60158716",
     "src-tauri/src/replica.rs": "8bdef601b892c4563088d228224aea203f99f811e2889494e28faf2b25579b39",
-    "src-tauri/src/sync.rs": "91eca7ab503388d9482cca215f6d71c5c439fb5a42e86b340534c2339f1580ac",
+    "src-tauri/src/sync.rs": "55f516fdd291c88d4d64d94afa4eeef7e6a5c5295fdc06cb7b4e4244df82f52c",
     "src-tauri/src/uploads.rs": "4b6a4284134693f7aaf7a1739d120204b0ef3d2da2da2b805bf68d9811f8fcb1",
-    "src-tauri/src/writes.rs": "a0b6d61aecffa546015792238721aca7a2275a7095f7fabf7884ecbe7c737fee",
+    "src-tauri/src/writes.rs": "ddfaa589a0ef120d4bf0465ea6226ef066a1ea4b14dd6db2038f67e54b20f0c6",
     "src/desktop/InvitationUpdate.tsx": "ce0697ed353e261b4cdf8659fcae284c5940798bdbf6e05b7cec623497bc2ca6",
     "src/desktop/blobs.ts": "a165e9a751b3ce5e3c99a6b80f0440bafd0c4e83af3a4ef740b126f40720f05c",
-    "src/desktop/bootstrap.ts": "d2bf969df9de1703d7d840c120c5df31dad72cd220c0f807e7015ea28f7adbca",
+    "src/desktop/bootstrap.ts": "e93d2dc18fa1e03157d716dbb267a0c9503f951dbeaa26323f8312f9548304c6",
     "src/desktop/calendar.ts": "3317775d582c95d3ec2ef2066cee9ecb4e1c21e01da63d2f6687a42605ff0352",
     "src/desktop/files.ts": "8369b6170ff54c1c737e02fcb01b1db20778e506135a80325360f1cac280c925",
     "src/desktop/invitation-updates.ts": "a7ec261b986b9f4623f894f0ce8a0a66f698135cf4a32a7854316a38dca9d58f",
-    "tests/desktop/bulwark.spec.ts": "626bd6bd41f711eab452fadd8c6cb065dcde16a72bf6c8cc20308c01f1daf498",
+    "tests/desktop/bulwark.spec.ts": "aa84e1ae18cb9eda0fcb227d80241b3a62c11e76ee1edc019533058ef653af75",
     "vite.config.ts": "99908acc816d883e943d81180f4cba2e090aef40ee031539eb2b158288c6cd09"
   }
 }

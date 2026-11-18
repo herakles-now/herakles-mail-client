@@ -24,6 +24,10 @@ pub struct Entry {
 }
 #[derive(Default, Serialize, Deserialize)]
 struct Journal {
+    #[serde(default)]
+    imports: std::collections::BTreeMap<String, Value>,
+    #[serde(default)]
+    import_previous: std::collections::BTreeMap<String, Option<Value>>,
     next: u64,
     entries: Vec<Entry>,
     #[serde(default)]
@@ -232,6 +236,17 @@ pub fn discard(
                 archived.to_string().as_str(),
             )
             .map_err(err)?;
+        if entry.kind == "contact" && entry.status != "uncertain" {
+            if let Some(uid) = entry.local.as_ref().and_then(|v| v["uid"].as_str()) {
+                if let Some(previous) = journal.import_previous.remove(uid) {
+                    if let Some(value) = previous {
+                        journal.imports.insert(uid.into(), value);
+                    } else {
+                        journal.imports.remove(uid);
+                    }
+                }
+            }
+        }
         journal.entries.remove(index);
         journal.next = journal
             .next
@@ -362,6 +377,29 @@ pub fn queue_object(
     base_state: Option<String>,
     hold: bool,
 ) -> Result<Value, String> {
+    queue_import_object(
+        store, scope, kind, method, args, objects, base_state, hold, None,
+    )
+}
+
+pub(crate) fn import_receipts(
+    store: &Store,
+    scope: &str,
+) -> Result<std::collections::BTreeMap<String, Value>, String> {
+    mutate(store, scope, |j| Ok(j.imports.clone()))
+}
+
+pub(crate) fn queue_import_object(
+    store: &Store,
+    scope: &str,
+    kind: &str,
+    method: &str,
+    args: Value,
+    objects: &std::collections::BTreeMap<String, Value>,
+    base_state: Option<String>,
+    hold: bool,
+    receipt: Option<(String, Value)>,
+) -> Result<Value, String> {
     if !args.is_object()
         || ["create", "update"]
             .iter()
@@ -447,6 +485,7 @@ pub fn queue_object(
                         existing.title = local["title"]
                             .as_str()
                             .or(local["name"].as_str())
+                            .or(local["name"]["full"].as_str())
                             .unwrap_or("Ohne Titel")
                             .into();
                         existing.status = if hold {
@@ -474,6 +513,7 @@ pub fn queue_object(
                         existing.title = local["title"]
                             .as_str()
                             .or(local["name"].as_str())
+                            .or(local["name"]["full"].as_str())
                             .unwrap_or("Ohne Titel")
                             .into();
                         if hold {
@@ -501,6 +541,7 @@ pub fn queue_object(
                 let title = local["title"]
                     .as_str()
                     .or(local["name"].as_str())
+                    .or(local["name"]["full"].as_str())
                     .unwrap_or("Ohne Titel")
                     .to_owned();
                 j.entries.push(Entry {
@@ -564,6 +605,7 @@ pub fn queue_object(
                     title: local["title"]
                         .as_str()
                         .or(local["name"].as_str())
+                        .or(local["name"]["full"].as_str())
                         .unwrap_or("Ohne Titel")
                         .into(),
                     action: "Löschen".into(),
@@ -575,6 +617,10 @@ pub fn queue_object(
                 });
             }
             destroyed.push(id.to_owned());
+        }
+        if let Some((uid, baseline)) = receipt {
+            let previous = j.imports.insert(uid.clone(), baseline);
+            j.import_previous.insert(uid, previous);
         }
         Ok(
             json!({"accountId":args["accountId"],"oldState":"local","newState":format!("local:{}",j.next),"created":created,"updated":updated,"destroyed":destroyed}),
@@ -609,6 +655,16 @@ pub fn finish(
                 e.error = error.map(str::to_owned);
             }
         } else {
+            if let Some(uid) = j
+                .entries
+                .iter()
+                .find(|e| e.id == id && e.kind == "contact")
+                .and_then(|e| e.local.as_ref())
+                .and_then(|v| v["uid"].as_str())
+                .map(str::to_owned)
+            {
+                j.import_previous.remove(&uid);
+            }
             j.entries.retain(|e| e.id != id);
         }
         Ok(())

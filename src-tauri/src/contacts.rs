@@ -34,6 +34,13 @@ pub fn read(store: &Store, scope: &str) -> Result<Snapshot, String> {
         .transpose()
         .map(|s| s.unwrap_or_default())
 }
+pub(crate) fn read_local(store: &Store, scope: &str) -> Result<Snapshot, String> {
+    let mut snapshot = read(store, scope)?;
+    if !snapshot.access_denied {
+        crate::journal::overlay(store, scope, "contact", &mut snapshot.contacts)?;
+    }
+    Ok(snapshot)
+}
 fn text(value: &Value, name: &str) -> Result<String, SyncError> {
     value[name]
         .as_str()
@@ -200,6 +207,9 @@ pub async fn synchronize(
     }
     // Full replacement explicitly removes remotely deleted contacts/books.
     store.put(&format!("contacts:{scope}"), &encoded)?;
+    if !snapshot.access_denied {
+        crate::google_contacts::clear_confirmed(store, scope, &snapshot.contacts)?;
+    }
     Ok(())
 }
 fn searchable(value: &Value) -> String {
@@ -445,7 +455,15 @@ pub fn answer_batch(
                 .unwrap_or(default_account);
             desktop::require_capability(store, config, account, sync::CONTACTS)
                 .map_err(|_| "accountNotSupportedByMethod")?;
-            let snapshot = read(store, &sync::scope(config, account)).map_err(|_| "serverFail")?;
+            let scope = sync::scope(config, account);
+            let mut snapshot = read_local(store, &scope).map_err(|_| "serverFail")?;
+            if let Some(state) = &mut snapshot.contact_state {
+                *state = format!(
+                    "{}:{}",
+                    state,
+                    crate::journal::revision(store, &scope).map_err(|_| "serverFail")?
+                );
+            }
             answer(&snapshot, account, &method, &args)
         })();
         match result {

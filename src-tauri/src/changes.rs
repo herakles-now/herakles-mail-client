@@ -34,6 +34,7 @@ struct Field {
 fn capability(kind: &str) -> Result<&'static str, String> {
     match kind {
         "calendar" => Ok(sync::CALENDARS),
+        "contact" => Ok(sync::CONTACTS),
         "file" => Ok(sync::FILES),
         "send" | "mail" => Ok("urn:ietf:params:jmap:mail"),
         _ => Err("Unbekannte Änderungsart.".into()),
@@ -75,7 +76,13 @@ fn baseline(
     scope: &str,
     kind: &str,
 ) -> Result<(Option<String>, BTreeMap<String, Value>), String> {
-    if kind == "calendar" {
+    if kind == "contact" {
+        let snapshot = crate::contacts::read(store, scope)?;
+        if snapshot.access_denied {
+            return Ok((None, BTreeMap::new()));
+        }
+        Ok((snapshot.contact_state, snapshot.contacts))
+    } else if kind == "calendar" {
         let snapshot = calendar::read_remote(store, scope)?;
         if snapshot.access_denied {
             return Ok((None, BTreeMap::new()));

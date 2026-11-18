@@ -342,11 +342,15 @@
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung."
     },
     "ContactCard/set": {
-      "status": "missing",
+      "status": "partial",
       "local": [
         {
-          "file": "src/desktop/bootstrap.ts",
-          "anchor": "const rejectContactWrite"
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "pub(crate) fn apply("
+        },
+        {
+          "file": "src-tauri/src/writes.rs",
+          "anchor": "pub(crate) async fn transmit_object_change("
         },
         {
           "file": "src-tauri/src/contacts.rs",
@@ -358,12 +362,17 @@
       ],
       "tests": [
         {
-          "file": "src-tauri/src/contacts.rs",
-          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
-          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "fn import_is_held_atomic_survives_restart_and_never_duplicates(",
+          "name": "import_is_held_atomic_survives_restart_and_never_duplicates"
+        },
+        {
+          "file": "src-tauri/src/google_contacts.rs",
+          "anchor": "fn contact_worker_requires_exact_ack_and_never_replays_uncertain_creates(",
+          "name": "contact_worker_requires_exact_ack_and_never_replays_uncertain_creates"
         }
       ],
-      "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung."
+      "limitations": "Ausschließlich ausgewählte einseitige Google-Importe: Neuanlage und Änderungen zuvor importierter Kontakte (Name, E-Mail, Telefon), dauerhaft vorgemerkt und durch den eigenen Übertragungsbutton ausschließlich für die gewählte Kontaktauswahl freigegeben. Kein generischer ContactCard/set-UI-/Pluginpfad, keine Löschungen oder automatische Zusammenführung. Google OAuth/People und echte Stalwart-Kontaktschreibvorgänge noch nicht live validiert."
     },
     "Core/echo": {
       "status": "missing",

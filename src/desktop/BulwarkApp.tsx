@@ -19,7 +19,8 @@ import { PluginPageNavigator } from '@/components/plugins/plugin-page-navigator'
 import { ExternalRecipientConfirmHost } from '@/components/email/external-recipient-confirm';
 import { usePathname } from './navigation';
 import { bootstrapBulwark, synchronizeBulwark } from './bootstrap';
-import { AccountSetup } from './AccountSetup';
+import { AccountSetup, AccountSetupDialog } from './AccountSetup';
+import { GoogleContacts } from './GoogleContacts';
 import { CacheSettings } from './CacheSettings';
 import { PendingChanges } from './PendingChanges';
 import type { Bootstrap } from './bootstrap';
@@ -34,7 +35,7 @@ function Routes() {
   switch (surface) {
     case 'settings': return <div className="desktop-settings"><CacheSettings /><div className="desktop-settings-content"><SettingsApp linkSegments={rest} /></div></div>;
     case 'calendar': return <CalendarApp linkSegments={rest} />;
-    case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice">Kontakte · Nur Lesen · Bearbeiten und Kontaktfotos sind noch nicht unterstützt.</div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
+    case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice"><span>Kontakte · Direkte Bearbeitung und Kontaktfotos sind noch nicht unterstützt.</span><GoogleContacts /></div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
     case 'files': return <FilesApp linkSegments={rest} />;
     default: return <MailApp />;
   }
@@ -43,6 +44,7 @@ export default function BulwarkApp() {
   type Profile = { id: string; name: string; accounts: { id: string; label: string; username: string }[]; activeAccountId: string | null };
   const [info, setInfo] = useState<Bootstrap | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [setupProfileId, setSetupProfileId] = useState<string | undefined>();
@@ -250,7 +252,14 @@ export default function BulwarkApp() {
     await invoke('set_network_enabled', { enabled });
     if (enabled) window.dispatchEvent(new Event('desktop-sync-requested'));
   };
-  if (needsSetup) return <AccountSetup profileId={setupProfileId} onComplete={() => window.location.reload()} />;
+  if (needsSetup) {
+    if (!setupDismissed) return <AccountSetup profileId={setupProfileId} onCancel={() => setSetupDismissed(true)} onComplete={() => window.location.reload()} />;
+    return <main className="desktop-account-setup"><section className="desktop-account-card"><h1>Kein Konto verbunden</h1><p>Die Einrichtung wurde abgebrochen. Du kannst später ein Konto hinzufügen oder zu einem vorhandenen Profil wechseln.</p>
+      <button type="button" onClick={() => setSetupDismissed(false)}>Konto hinzufügen</button>
+      {profiles.filter((profile) => profile.accounts.length > 0).map((profile) => <button type="button" key={profile.id} onClick={() => { void invoke('switch_profile', { profileId: profile.id }).then(() => window.location.reload()).catch((reason) => setError(String(reason))); }}>Profil „{profile.name}“ öffnen</button>)}
+      {error && <p role="alert">{error}</p>}
+    </section></main>;
+  }
   if (!info) return <div className="desktop-start"><h1>Herakles Mail</h1><p role="status">{error || status}</p></div>;
   return <NextIntlClientProvider locale="de" messages={messages} timeZone="Europe/Belgrade">
     <ThemeProvider><RateLimitToastProvider><TourProvider>
@@ -280,7 +289,7 @@ export default function BulwarkApp() {
         {offlineMode ? 'Offline · Nur lokal' : connectivity === 'online' ? 'Online · Verbunden' : connectivity === 'syncing' ? `Sync · ${syncPhase}` : 'Offline · Verbindung getrennt'}
       </button>
       </footer>
-      {showAccountSetup && <div className="desktop-setup-overlay"><AccountSetup profileId={setupProfileId} onComplete={() => window.location.reload()} /><button type="button" className="desktop-setup-cancel" onClick={() => setShowAccountSetup(false)}>Abbrechen</button></div>}
+      {showAccountSetup && <AccountSetupDialog profileId={setupProfileId} onCancel={() => setShowAccountSetup(false)} onComplete={() => window.location.reload()} />}
       <div className="desktop-workspace">
       <Routes /><PluginDialogHost /><PluginConsentDialog /><PluginConnectDialog />
       <PluginAppEvents /><PluginPageNavigator /><ExternalRecipientConfirmHost />
