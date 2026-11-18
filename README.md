@@ -117,9 +117,5 @@ the variable entirely before a subsequent normal launch.
 
 ## Google contact import
 
-The desktop Contacts page offers a reviewed, one-way Google → Stalwart import for
-names, email addresses and phone numbers. OAuth setup, scope, queue approval and
-limitations are described in [Google contact import](docs/google-contacts-import.md).
-The app publisher configures a shared desktop OAuth client at native build time;
-users connect through their default browser without entering client credentials.
-The app registration is still required; live interoperability is not yet verified.
+Google contact import is available in the separate Google Contacts Import app.
+Existing contacts on Stalwart remain available through normal contact synchronization.

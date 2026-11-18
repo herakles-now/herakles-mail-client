@@ -54,7 +54,3 @@ Blob-Downloads nutzen inzwischen den nativen redb-Cache auch fuer die originalen
 Mail-Anhangsfunktionen. Uploads und Composer-Anhänge werden zuerst in redb gehalten und erst zusammen
 mit einem freigegebenen Schreibauftrag übertragen. Limits und Offline-Verhalten
 stehen in docs/architecture.md.
-
-Der separate Google-Import nutzt das bestehende native Schreibjournal und Bulwarks
-originale Kontakt-Hooks. Er schaltet keine allgemeinen Kontakt-Schreib-APIs für
-Plugins frei. Umfang und Grenzen stehen in [Google-Import](google-contacts-import.md).

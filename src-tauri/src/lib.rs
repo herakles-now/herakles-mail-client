@@ -13,8 +13,6 @@ mod contacts;
 mod desktop;
 mod email_get;
 mod email_query;
-mod google_auth;
-mod google_contacts;
 mod journal;
 mod logging;
 mod push;
@@ -358,6 +356,13 @@ fn pending_changes(store: State<'_, storage::Store>) -> Result<Vec<serde_json::V
     }
     for account in all_change_accounts(&store, &config)? {
         for entry in journal::entries(&store, &sync::scope(&config, &account))? {
+            if entry.kind == "draft" {
+                rows.retain(|row| {
+                    !(row["kind"] == "draft"
+                        && row["accountId"] == account
+                        && row["objectId"] == entry.object_id)
+                });
+            }
             rows.push(serde_json::json!({"accountId":account,"journalId":entry.id,"objectId":entry.object_id,
                 "kind":entry.kind,"title":entry.title,"action":entry.action,"status":entry.status,
                 "requiresReview":entry.status=="held","transferable":true,
@@ -653,6 +658,7 @@ async fn sync_mail(
         store.set_change_review(&sync::scope(&config, &account_id), false, false)?;
     }
     let synchronized = store.server_emails(&sync::scope(&config, &account_id))?;
+    journal::clear_confirmed_drafts(&store, &sync::scope(&config, &account_id), &synchronized)?;
     journal::clear_applied_sends_after_readback(
         &store,
         &sync::scope(&config, &account_id),
@@ -779,7 +785,6 @@ pub fn run() {
             }
         })
         .manage(SyncGate::default())
-        .manage(google_auth::GoogleGate::default())
         .manage(network_mode)
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
@@ -797,13 +802,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            google_auth::google_connect,
-            google_auth::google_disconnect,
-            google_auth::google_fetch_contacts,
-            google_contacts::google_import_status,
-            google_contacts::google_import_preview,
-            google_contacts::google_import_apply,
-            google_contacts::google_import_transfer,
             cache_settings::download_cache_usage,
             cache_settings::set_download_cache_limit,
             cached_session,
@@ -834,6 +832,7 @@ pub fn run() {
             writes::local_identities,
             writes::sync_identities,
             writes::queue_submission,
+            writes::queue_draft_sync,
             writes::edit_queued_send,
             writes::local_object_set,
             writes::local_files,

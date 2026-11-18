@@ -342,16 +342,8 @@
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung."
     },
     "ContactCard/set": {
-      "status": "partial",
+      "status": "missing",
       "local": [
-        {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "pub(crate) fn apply("
-        },
-        {
-          "file": "src-tauri/src/writes.rs",
-          "anchor": "pub(crate) async fn transmit_object_change("
-        },
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer("
@@ -362,17 +354,12 @@
       ],
       "tests": [
         {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "fn import_is_held_atomic_survives_restart_and_never_duplicates(",
-          "name": "import_is_held_atomic_survives_restart_and_never_duplicates"
-        },
-        {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "fn contact_worker_requires_exact_ack_and_never_replays_uncertain_creates(",
-          "name": "contact_worker_requires_exact_ack_and_never_replays_uncertain_creates"
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes"
         }
       ],
-      "limitations": "Ausschließlich ausgewählte einseitige Google-Importe: Neuanlage und Änderungen zuvor importierter Kontakte (Name, E-Mail, Telefon), dauerhaft vorgemerkt und durch den eigenen Übertragungsbutton ausschließlich für die gewählte Kontaktauswahl freigegeben. Kein generischer ContactCard/set-UI-/Pluginpfad, keine Löschungen oder automatische Zusammenführung. Google OAuth/People und echte Stalwart-Kontaktschreibvorgänge noch nicht live validiert."
+      "limitations": "Kontaktkarten sind lokal lesbar. Schreibzugriffe aus Oberfläche und Plugins werden abgelehnt."
     },
     "Core/echo": {
       "status": "missing",
@@ -544,7 +531,7 @@
           "name": "writable_jmap_queues_flags_atomically_and_read_only_remains_enforced"
         }
       ],
-      "limitations": "Seen/Flagged, Verschieben, Papierkorb und lokale Entwuerfe; strukturierter Versand separat journalisiert. Keine beliebigen Email/set-Patches; Live-Schreibnachweis auf freigegebene Flags begrenzt."
+      "limitations": "Seen/Flagged, Verschieben, Papierkorb und lokale Entwuerfe. Manuell freigegebene lokale Entwuerfe koennen als neue Serverentwuerfe gespeichert werden; der Worker wartet auf bestaetigtes Ruecklesen. Strukturierter Versand separat journalisiert. Keine beliebigen Email/set-Patches; Live-Schreibnachweis auf freigegebene Flags begrenzt."
     },
     "EmailSubmission/changes": {
       "status": "missing",
@@ -1339,7 +1326,7 @@
     "Mail-Lesen: echte Datumswerte, Text-/Adresssuche, Sortierung und SearchSnippet-Fallback gegen Stalwart angleichen; Email/get besitzt jetzt einen eigenen Standardprojektor mit Header-/MIME-/Bodyoptionen.",
     "Batchrouting: gemischte Kalender/Datei/Mail/Identity-Aufrufe und Ergebnisreferenzen vereinheitlichen; heutige Sonderpfade nicht als volle JMAP-Unterstuetzung behandeln.",
     "Mailbox/query und Mailbox/set: Ordnerfilter, Sortierung, Fenster, Erstellen/Umbenennen/Loeschen und Rechte pruefen und lokal journalisieren.",
-    "Entwuerfe/Versand: Server-Entwurfsabgleich, Import/Copy, MIME und Submission-Belege vervollstaendigen. Live-Tests benoetigen separate Freigaben.",
+    "Entwuerfe/Versand: bestehende Serverentwuerfe konfliktgeprueft ersetzen sowie Import/Copy, MIME und Submission-Belege vervollstaendigen. Live-Tests benoetigen separate Freigaben.",
     "Kalender-/Kontakt-/Dateischreiben und Nebenpfade vervollstaendigen; Admin/Selfservice/Sieve/Quota explizit priorisieren statt implizit freizuschalten."
   ],
   "dynamicReviews": [

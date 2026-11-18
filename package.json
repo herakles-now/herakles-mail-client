@@ -17,8 +17,7 @@
     "check:native": "cargo check --manifest-path src-tauri/Cargo.toml",
     "audit:jmap": "node scripts/audit-jmap.mjs",
     "check:jmap": "node scripts/audit-jmap.mjs --check",
-    "test:jmap-audit": "node --test scripts/audit-jmap.test.mjs",
-    "tauri:google": "node scripts/tauri-google.mjs"
+    "test:jmap-audit": "node --test scripts/audit-jmap.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

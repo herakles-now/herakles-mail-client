@@ -112,6 +112,24 @@ pub async fn sync_identities(
     )
 }
 #[tauri::command]
+pub async fn queue_draft_sync(
+    store: State<'_, Store>,
+    gate: State<'_, SyncGate>,
+    account_id: String,
+    draft_id: String,
+) -> Result<(), String> {
+    let _guard = gate.0.lock().await;
+    let config = TestConfig::load()?;
+    writable(&store, &config, &account_id, "urn:ietf:params:jmap:mail")?;
+    journal::queue_draft(
+        &store,
+        &sync::scope(&config, &account_id),
+        &account_id,
+        &draft_id,
+    )
+}
+
+#[tauri::command]
 pub async fn queue_submission(
     store: State<'_, Store>,
     network: State<'_, NetworkMode>,
@@ -171,7 +189,6 @@ pub async fn queue_submission(
     for (_, args, _) in &method_calls {
         crate::uploads::validate(&store, &scope, args)?;
     }
-    let online_at_start = network.enabled();
     let source_account = draft_account_id.as_deref().unwrap_or(&account);
     if draft_id.is_some() {
         desktop::require_capability(&store, &config, source_account, "urn:ietf:params:jmap:mail")?;
@@ -179,11 +196,21 @@ pub async fn queue_submission(
     // Online sends use the native transport immediately so the upstream
     // composer receives the real JMAP response. Offline/review-gated sends
     // stay durably queued for the user's approval.
-    let _send_guard = if online_at_start {
-        Some(gate.0.lock().await)
-    } else {
-        None
-    };
+    let _send_guard = gate.0.lock().await;
+    if let Some(id) = draft_id
+        .as_deref()
+        .filter(|id| id.starts_with("local-draft-"))
+    {
+        let draft_scope = sync::scope(&config, source_account);
+        if journal::entries(&store, &draft_scope)?
+            .iter()
+            .any(|entry| entry.kind == "draft" && entry.object_id == id)
+        {
+            return Err(
+                "Zuerst den vorgemerkten Entwurfsabgleich abschließen oder verwerfen.".into(),
+            );
+        }
+    }
     let hold = !network.enabled() || store.metadata(&scope)?.review_new_changes;
     let id = journal::enqueue_send(
         &store,
@@ -615,7 +642,7 @@ pub(crate) async fn sync_pending_changes_inner(
             if !network.enabled() {
                 return Ok(changed);
             }
-            if entry.status != "ready" {
+            if entry.status != "ready" || entry.kind == "contact" {
                 continue;
             }
             if entry.kind == "send" {
@@ -852,8 +879,8 @@ pub(crate) async fn sync_pending_changes_inner(
                     )?,
                 }
             } else {
-                let capability = if entry.kind == "contact" {
-                    sync::CONTACTS
+                let capability = if entry.kind == "draft" {
+                    "urn:ietf:params:jmap:mail"
                 } else if entry.kind == "calendar" {
                     sync::CALENDARS
                 } else {
@@ -868,11 +895,27 @@ pub(crate) async fn sync_pending_changes_inner(
                         }
                     };
                 writable(&store, &config, &account, capability)?;
-                if entry.kind == "contact" {
-                    if crate::google_contacts::validate_entry(store, config, &account, &entry)
-                        .is_err()
-                    {
-                        journal::finish(store, &scope, entry.id, Some("blocked"), Some("Kontakt oder Adressbuch ist nicht mehr beschreibbar. Bitte neu prüfen."))?;
+                if entry.kind == "draft" {
+                    let mail = store.local_mail(&scope)?;
+                    let mailbox = entry.calls[0].1["create"]["draft"]["mailboxIds"].as_object();
+                    let valid = mailbox.is_some_and(|ids| {
+                        ids.len() == 1
+                            && mail.mailboxes.iter().any(|book| {
+                                book["role"] == "drafts"
+                                    && book["myRights"]["mayAddItems"] != false
+                                    && book["id"]
+                                        .as_str()
+                                        .is_some_and(|id| ids.get(id) == Some(&Value::Bool(true)))
+                            })
+                    });
+                    if !valid {
+                        journal::finish(
+                            &store,
+                            &scope,
+                            entry.id,
+                            Some("blocked"),
+                            Some("Der Entwurfsordner ist nicht mehr beschreibbar."),
+                        )?;
                         continue;
                     }
                 }
@@ -912,6 +955,10 @@ pub(crate) async fn sync_pending_changes_inner(
                     }
                 };
                 let (method, mut args, _) = resolved[0].clone();
+                if !network.enabled() {
+                    journal::hold(&store, &scope)?;
+                    return Ok(changed);
+                }
                 if let Some(state) = &entry.base_state {
                     args["ifInState"] = json!(state);
                 }
@@ -950,7 +997,9 @@ pub(crate) async fn transmit_object_change(
                 })
                 .ok_or("invalidArguments")?;
             let confirmed = match action {
-                "create" => response["created"][&key]["id"].as_str().is_some(),
+                "create" => response["created"][&key]["id"]
+                    .as_str()
+                    .is_some_and(|id| !id.is_empty()),
                 "update" => response["updated"]
                     .as_object()
                     .is_some_and(|rows| rows.contains_key(&key)),
@@ -967,8 +1016,18 @@ pub(crate) async fn transmit_object_change(
             if confirmed
                 && !rejected
                 && response["newState"].is_string()
-                && (entry.kind != "contact" || response["accountId"] == args["accountId"])
+                && (!["contact", "draft"].contains(&entry.kind.as_str())
+                    || response["accountId"] == args["accountId"])
             {
+                if entry.kind == "draft" && action == "create" {
+                    journal::confirm_draft(
+                        store,
+                        scope,
+                        entry.id,
+                        response["created"][&key]["id"].as_str().unwrap(),
+                    )?;
+                    return Ok(true);
+                }
                 if action == "create" {
                     journal::remember_created(
                         store,
@@ -1030,6 +1089,66 @@ pub(crate) async fn transmit_object_change(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn draft_sync_requires_approval_and_exact_readback() {
+        struct DraftRemote;
+        impl Remote for DraftRemote {
+            async fn call(&self, method: &str, args: Value) -> Result<Value, sync::SyncError> {
+                assert_eq!(method, "Email/set");
+                assert_eq!(args["create"]["draft"]["keywords"]["$draft"], true);
+                assert!(args["create"]["draft"].get("id").is_none());
+                Ok(
+                    json!({"accountId":"a","newState":"e2","created":{"draft":{"id":"server-draft"}}}),
+                )
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("draft-sync.redb");
+        let store = Store::open(&path).unwrap();
+        let draft =
+            json!({"keywords":{"$draft":true},"mailboxIds":{"drafts":true},"subject":"Offline"});
+        let id = store.save_local_draft("scope", draft.clone()).unwrap();
+        journal::queue_draft(&store, "scope", "a", &id).unwrap();
+        assert!(journal::queue_draft(&store, "scope", "a", &id).is_err());
+        assert!(store.save_draft_version("scope", draft, Some(&id)).is_err());
+        assert!(store.delete_local_draft("scope", &id).is_err());
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let entry = journal::entries(&store, "scope").unwrap().remove(0);
+        let (method, args, _) = entry.calls[0].clone();
+        assert!(!transmit_object_change(
+            &store,
+            &DraftRemote,
+            "scope",
+            &entry,
+            &method,
+            args.clone()
+        )
+        .await
+        .unwrap());
+        journal::approve(&store, "scope", &[entry.id]).unwrap();
+        assert!(
+            transmit_object_change(&store, &DraftRemote, "scope", &entry, &method, args)
+                .await
+                .unwrap()
+        );
+        journal::clear_confirmed_drafts(
+            &store,
+            "scope",
+            &[json!({"id":"other","keywords":{"$draft":true}})],
+        )
+        .unwrap();
+        assert!(store.local_draft("scope", &id).is_ok());
+        journal::clear_confirmed_drafts(
+            &store,
+            "scope",
+            &[json!({"id":"server-draft","keywords":{"$draft":true}})],
+        )
+        .unwrap();
+        assert!(store.local_draft("scope", &id).is_err());
+        assert!(journal::entries(&store, "scope").unwrap().is_empty());
+    }
     #[test]
     fn file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes() {
         let dir = tempfile::tempdir().unwrap();
@@ -1366,77 +1485,4 @@ mod tests {
         config.username = "another-login".into();
         assert!(writable(&store, &config, "allowed", sync::CALENDARS).is_err());
     }
-}
-
-/// Contact-only path through the production write worker. Never releases or
-/// transmits other queued object types, accounts, or unselected contacts.
-pub(crate) async fn sync_contact_selection(
-    store: &Store,
-    config: &TestConfig,
-    network: &NetworkMode,
-    account: &str,
-    ids: &[u64],
-) -> Result<usize, String> {
-    crate::require_network(network)?;
-    writable(store, config, account, sync::CONTACTS)?;
-    let scope = sync::scope(config, account);
-    let remote = match sync::Connection::discover_for(config, account, sync::CONTACTS).await {
-        Ok(remote) => remote,
-        Err(error) => {
-            hold_contact_selection(store, &scope, ids)?;
-            return Err(error.message());
-        }
-    };
-    transmit_contact_selection(store, config, network, account, ids, &remote).await
-}
-fn hold_contact_selection(store: &Store, scope: &str, ids: &[u64]) -> Result<(), String> {
-    for entry in journal::entries(store, scope)?
-        .into_iter()
-        .filter(|e| e.kind == "contact" && e.status == "ready" && ids.contains(&e.id))
-    {
-        journal::finish(store, scope, entry.id, Some("held"), None)?;
-    }
-    Ok(())
-}
-pub(crate) async fn transmit_contact_selection(
-    store: &Store,
-    config: &TestConfig,
-    network: &NetworkMode,
-    account: &str,
-    ids: &[u64],
-    remote: &impl Remote,
-) -> Result<usize, String> {
-    writable(store, config, account, sync::CONTACTS)?;
-    let scope = sync::scope(config, account);
-    let mut confirmed = 0;
-    for id in ids {
-        if !network.enabled() {
-            hold_contact_selection(store, &scope, ids)?;
-            break;
-        }
-        let Some(entry) = journal::entries(store, &scope)?
-            .into_iter()
-            .find(|e| e.id == *id && e.kind == "contact" && e.status == "ready")
-        else {
-            continue;
-        };
-        if crate::google_contacts::validate_entry(store, config, account, &entry).is_err() {
-            journal::finish(
-                store,
-                &scope,
-                entry.id,
-                Some("blocked"),
-                Some("Kontakt oder Adressbuch ist nicht mehr beschreibbar. Bitte neu prüfen."),
-            )?;
-            continue;
-        }
-        let (method, mut args, _) = entry.calls[0].clone();
-        if let Some(state) = &entry.base_state {
-            args["ifInState"] = json!(state);
-        }
-        if transmit_object_change(store, remote, &scope, &entry, &method, args).await? {
-            confirmed += 1;
-        }
-    }
-    Ok(confirmed)
 }

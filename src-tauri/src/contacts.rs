@@ -35,11 +35,7 @@ pub fn read(store: &Store, scope: &str) -> Result<Snapshot, String> {
         .map(|s| s.unwrap_or_default())
 }
 pub(crate) fn read_local(store: &Store, scope: &str) -> Result<Snapshot, String> {
-    let mut snapshot = read(store, scope)?;
-    if !snapshot.access_denied {
-        crate::journal::overlay(store, scope, "contact", &mut snapshot.contacts)?;
-    }
-    Ok(snapshot)
+    read(store, scope)
 }
 fn text(value: &Value, name: &str) -> Result<String, SyncError> {
     value[name]
@@ -207,9 +203,6 @@ pub async fn synchronize(
     }
     // Full replacement explicitly removes remotely deleted contacts/books.
     store.put(&format!("contacts:{scope}"), &encoded)?;
-    if !snapshot.access_denied {
-        crate::google_contacts::clear_confirmed(store, scope, &snapshot.contacts)?;
-    }
     Ok(())
 }
 fn searchable(value: &Value) -> String {

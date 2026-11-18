@@ -646,8 +646,28 @@ impl Store {
         self.queue_keywords(scope, email_id, &[(keyword.to_owned(), enabled)])
     }
 
+    pub(crate) fn local_draft(&self, scope: &str, id: &str) -> Result<Value, String> {
+        let tx = self.0.begin_read().map_err(database_error)?;
+        let drafts = tx.open_table(DRAFTS).map_err(database_error)?;
+        let key = object_key(scope, Collection::Email, id);
+        let row = drafts
+            .get(key.as_str())
+            .map_err(database_error)?
+            .ok_or("Der lokale Entwurf ist nicht mehr vorhanden.")?;
+        decode(row.value())
+    }
+
     /// Save a composer draft with durable, account-scoped local attachments.
-    pub fn save_local_draft(&self, scope: &str, mut email: Value) -> Result<String, String> {
+    pub fn save_local_draft(&self, scope: &str, email: Value) -> Result<String, String> {
+        self.save_draft_version(scope, email, None)
+    }
+
+    pub(crate) fn save_draft_version(
+        &self,
+        scope: &str,
+        mut email: Value,
+        previous_id: Option<&str>,
+    ) -> Result<String, String> {
         if email["keywords"]["$draft"] != true {
             return Err("Ungültiger Entwurf.".into());
         }
@@ -713,7 +733,23 @@ impl Store {
                 .next_operation
                 .checked_add(1)
                 .ok_or("Lokale Entwurfsnummer ist ausgeschöpft.")?;
-            id = format!("local-draft-{:020}", meta.next_operation);
+            let mut drafts = tx.open_table(DRAFTS).map_err(database_error)?;
+            id = if let Some(previous_id) = previous_id {
+                crate::journal::ensure_draft_editable(&tx, scope, previous_id)?;
+                if !previous_id.starts_with("local-draft-") {
+                    return Err("Nur ein lokaler Entwurf kann ersetzt werden.".into());
+                }
+                let key = object_key(scope, Collection::Email, previous_id);
+                let previous = drafts
+                    .get(key.as_str())
+                    .map_err(database_error)?
+                    .ok_or("Der lokale Entwurf ist nicht mehr vorhanden.")?;
+                let previous: Value = decode(previous.value())?;
+                email["threadId"] = previous["threadId"].clone();
+                previous_id.to_owned()
+            } else {
+                format!("local-draft-{:020}", meta.next_operation)
+            };
             email["id"] = Value::String(id.clone());
             if !email["threadId"].as_str().is_some_and(|id| !id.is_empty()) {
                 email["threadId"] = Value::String(id.clone());
@@ -722,8 +758,7 @@ impl Store {
             if encoded.len() > 5 * 1024 * 1024 {
                 return Err("Entwurf überschreitet die lokale Speichergrenze.".into());
             }
-            tx.open_table(DRAFTS)
-                .map_err(database_error)?
+            drafts
                 .insert(
                     object_key(scope, Collection::Email, &id).as_str(),
                     encoded.as_str(),
@@ -738,10 +773,22 @@ impl Store {
     }
 
     pub fn delete_local_draft(&self, scope: &str, id: &str) -> Result<(), String> {
+        self.remove_local_draft(scope, id, false)
+    }
+
+    pub(crate) fn remove_local_draft(
+        &self,
+        scope: &str,
+        id: &str,
+        confirmed: bool,
+    ) -> Result<(), String> {
         if !id.starts_with("local-draft-") {
             return Err("notFound".into());
         }
         let tx = self.0.begin_write().map_err(database_error)?;
+        if !confirmed {
+            crate::journal::ensure_draft_editable(&tx, scope, id)?;
+        }
         {
             let mut table = tx.open_table(DRAFTS).map_err(database_error)?;
             if table
@@ -749,7 +796,11 @@ impl Store {
                 .map_err(database_error)?
                 .is_none()
             {
-                return Err("notFound".into());
+                return if confirmed {
+                    Ok(())
+                } else {
+                    Err("notFound".into())
+                };
             }
             let mut metadata_table = tx.open_table(REPLICAS).map_err(database_error)?;
             let mut meta: Metadata = metadata_table

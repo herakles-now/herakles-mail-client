@@ -37,8 +37,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       JMAP_READ_ONLY: 'true'
-      HERAKLES_GOOGLE_CLIENT_ID: ${{ vars.HERAKLES_GOOGLE_CLIENT_ID }}
-      HERAKLES_GOOGLE_CLIENT_SECRET: ${{ secrets.HERAKLES_GOOGLE_CLIENT_SECRET }}
       APPIMAGE_EXTRACT_AND_RUN: '1'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5

@@ -80,6 +80,12 @@ pub fn initialize(store: &Store) -> Result<(), String> {
                     entry.status = "uncertain".into();
                     entry.error =
                         Some("App während der Übertragung beendet; Serverstatus prüfen".into());
+                } else if entry.kind == "contact"
+                    && ["held", "ready", "blocked"].contains(&entry.status.as_str())
+                {
+                    entry.status = "blocked".into();
+                    entry.error =
+                        Some("Kontaktimport wurde in eine eigene App ausgelagert.".into());
                 }
             }
             table
@@ -101,6 +107,75 @@ pub fn entries(store: &Store, scope: &str) -> Result<Vec<Entry>, String> {
         .transpose()?
         .unwrap_or_default();
     Ok(journal.entries)
+}
+
+pub(crate) fn ensure_draft_editable(
+    tx: &redb::WriteTransaction,
+    scope: &str,
+    id: &str,
+) -> Result<(), String> {
+    let table = tx.open_table(TABLE).map_err(err)?;
+    if let Some(row) = table.get(scope).map_err(err)? {
+        let journal: Journal = serde_json::from_str(row.value()).map_err(err)?;
+        if journal
+            .entries
+            .iter()
+            .any(|entry| entry.kind == "draft" && entry.object_id == id)
+        {
+            return Err(
+                "Zuerst den vorgemerkten Entwurfsabgleich abschließen oder verwerfen.".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn queue_draft(
+    store: &Store,
+    scope: &str,
+    account: &str,
+    id: &str,
+) -> Result<(), String> {
+    mutate(store, scope, |journal| {
+        if journal
+            .entries
+            .iter()
+            .any(|entry| entry.kind == "draft" && entry.object_id == id)
+        {
+            return Err("Dieser Entwurf ist bereits vorgemerkt.".into());
+        }
+        let draft = store.local_draft(scope, id)?;
+        let title = draft["subject"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Ohne Betreff")
+            .to_owned();
+        let mut payload = draft.as_object().cloned().ok_or("Ungültiger Entwurf.")?;
+        for key in ["id", "threadId", "receivedAt"] {
+            payload.remove(key);
+        }
+        journal.next = journal
+            .next
+            .checked_add(1)
+            .ok_or("Änderungsnummer ausgeschöpft.")?;
+        journal.entries.push(Entry {
+            id: journal.next,
+            kind: "draft".into(),
+            object_id: id.into(),
+            title,
+            action: "Als Entwurf auf Stalwart speichern".into(),
+            status: "held".into(),
+            calls: vec![(
+                "Email/set".into(),
+                json!({"accountId":account,"create":{"draft":payload}}),
+                "draft".into(),
+            )],
+            local: Some(draft),
+            base_state: None,
+            error: None,
+        });
+        Ok(())
+    })
 }
 pub fn revision(store: &Store, scope: &str) -> Result<u64, String> {
     let tx = store.0.begin_read().map_err(err)?;
@@ -377,29 +452,6 @@ pub fn queue_object(
     base_state: Option<String>,
     hold: bool,
 ) -> Result<Value, String> {
-    queue_import_object(
-        store, scope, kind, method, args, objects, base_state, hold, None,
-    )
-}
-
-pub(crate) fn import_receipts(
-    store: &Store,
-    scope: &str,
-) -> Result<std::collections::BTreeMap<String, Value>, String> {
-    mutate(store, scope, |j| Ok(j.imports.clone()))
-}
-
-pub(crate) fn queue_import_object(
-    store: &Store,
-    scope: &str,
-    kind: &str,
-    method: &str,
-    args: Value,
-    objects: &std::collections::BTreeMap<String, Value>,
-    base_state: Option<String>,
-    hold: bool,
-    receipt: Option<(String, Value)>,
-) -> Result<Value, String> {
     if !args.is_object()
         || ["create", "update"]
             .iter()
@@ -618,10 +670,6 @@ pub(crate) fn queue_import_object(
             }
             destroyed.push(id.to_owned());
         }
-        if let Some((uid, baseline)) = receipt {
-            let previous = j.imports.insert(uid.clone(), baseline);
-            j.import_previous.insert(uid, previous);
-        }
         Ok(
             json!({"accountId":args["accountId"],"oldState":"local","newState":format!("local:{}",j.next),"created":created,"updated":updated,"destroyed":destroyed}),
         )
@@ -693,6 +741,64 @@ pub fn clear_applied(store: &Store, scope: &str, kind: &str) -> Result<(), Strin
     mutate(store, scope, |j| {
         j.entries
             .retain(|e| e.kind != kind || e.status != "applied");
+        Ok(())
+    })
+}
+
+pub(crate) fn clear_confirmed_drafts(
+    store: &Store,
+    scope: &str,
+    server_emails: &[Value],
+) -> Result<(), String> {
+    let confirmed: std::collections::BTreeSet<_> = server_emails
+        .iter()
+        .filter(|email| email["keywords"]["$draft"] == true)
+        .filter_map(|email| email["id"].as_str())
+        .collect();
+    let applied = mutate(store, scope, |journal| {
+        Ok(journal
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry.kind == "draft"
+                    && entry.status == "applied"
+                    && journal
+                        .mappings
+                        .get(&entry.object_id)
+                        .is_some_and(|id| confirmed.contains(id.as_str()))
+            })
+            .map(|entry| (entry.id, entry.object_id.clone()))
+            .collect::<Vec<_>>())
+    })?;
+    for (entry_id, draft_id) in applied {
+        store.remove_local_draft(scope, &draft_id, true)?;
+        mutate(store, scope, |journal| {
+            journal.entries.retain(|entry| entry.id != entry_id);
+            journal.mappings.remove(&draft_id);
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+pub(crate) fn confirm_draft(
+    store: &Store,
+    scope: &str,
+    entry_id: u64,
+    remote_id: &str,
+) -> Result<(), String> {
+    mutate(store, scope, |journal| {
+        let entry = journal
+            .entries
+            .iter_mut()
+            .find(|entry| {
+                entry.id == entry_id && entry.kind == "draft" && entry.status == "sending"
+            })
+            .ok_or("Vorgemerkter Entwurf fehlt.")?;
+        entry.status = "applied".into();
+        journal
+            .mappings
+            .insert(entry.object_id.clone(), remote_id.into());
         Ok(())
     })
 }
@@ -865,6 +971,37 @@ pub fn edit_send(store: &Store, scope: &str, id: u64) -> Result<String, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_contact_imports_cannot_be_approved_after_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("contact-import.redb");
+        let store = Store::open(&path).unwrap();
+        for (kind, method) in [("contact", "ContactCard/set"), ("file", "FileNode/set")] {
+            queue_object(
+                &store,
+                "a",
+                kind,
+                method,
+                json!({"accountId":"a","create":{"sample":{"name":"Sample"}}}),
+                &BTreeMap::new(),
+                None,
+                false,
+            )
+            .unwrap();
+        }
+        drop(store);
+
+        let store = Store::open(&path).unwrap();
+        let queued = entries(&store, "a").unwrap();
+        assert_eq!(queued[0].status, "blocked");
+        assert_eq!(queued[1].status, "ready");
+        approve(&store, "a", &[queued[0].id]).unwrap();
+        assert!(!claim(&store, "a", queued[0].id).unwrap());
+        discard(&store, "a", queued[0].id, false).unwrap();
+        assert_eq!(entries(&store, "a").unwrap().len(), 1);
+    }
+
     #[test]
     fn discard_protects_local_dependencies_and_archives_uncertain_receipts() {
         let dir = tempfile::tempdir().unwrap();

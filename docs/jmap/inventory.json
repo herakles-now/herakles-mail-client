@@ -788,9 +788,9 @@
     "requestSites": 227,
     "transportSites": 73,
     "statuses": {
-      "partial": 21,
+      "partial": 20,
       "fallback": 4,
-      "missing": 50,
+      "missing": 51,
       "reference-only": 0
     }
   },
@@ -2234,7 +2234,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 296
+          "line": 289
         }
       ],
       "stalwart": [
@@ -2249,7 +2249,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 706
+          "line": 699
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -2603,7 +2603,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 296
+          "line": 289
         }
       ],
       "stalwart": [
@@ -2618,7 +2618,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 706
+          "line": 699
         }
       ],
       "limitations": "Kontakt- und Adressbuchaenderungen bewusst gesperrt; kein Schreibjournal. Sichtbare restliche Editorpfade bedeuten keine Unterstuetzung.",
@@ -5039,7 +5039,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn local_object_set_inner(",
-          "line": 342
+          "line": 369
         },
         {
           "file": "src/desktop/invitation-updates.ts",
@@ -5064,25 +5064,25 @@
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names(",
           "name": "calendar_overlay_never_changes_remote_snapshot_and_file_dependencies_preserve_names",
-          "line": 1088
+          "line": 1225
         },
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn calendar_versions_reject_stale_state_and_keep_changes_durable(",
           "name": "calendar_versions_reject_stale_state_and_keep_changes_durable",
-          "line": 1236
+          "line": 1355
         },
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results(",
           "name": "calendar_answers_require_exact_acknowledgement_and_never_replay_uncertain_results",
-          "line": 1123
+          "line": 1242
         },
         {
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn folded_calendar_reply_keeps_scheduling_request_across_restart(",
           "name": "folded_calendar_reply_keeps_scheduling_request_across_restart",
-          "line": 1035
+          "line": 1172
         },
         {
           "file": "src-tauri/src/calendar_roundtrip.rs",
@@ -5755,7 +5755,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 296
+          "line": 289
         }
       ],
       "stalwart": [
@@ -5770,7 +5770,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 706
+          "line": 699
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -5979,7 +5979,7 @@
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 296
+          "line": 289
         }
       ],
       "stalwart": [
@@ -5994,7 +5994,7 @@
           "file": "src-tauri/src/contacts.rs",
           "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
           "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
-          "line": 706
+          "line": 699
         }
       ],
       "limitations": "Lesende kontogetrennte Snapshots mit lokaler Suche/Eigenschaftsauswahl; keine Fotos, keine Schreibparitaet, nur unterstuetzte Filter und Sortierung.",
@@ -6166,22 +6166,12 @@
     },
     {
       "method": "ContactCard/set",
-      "status": "partial",
+      "status": "missing",
       "local": [
-        {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "pub(crate) fn apply(",
-          "line": 484
-        },
-        {
-          "file": "src-tauri/src/writes.rs",
-          "anchor": "pub(crate) async fn transmit_object_change(",
-          "line": 928
-        },
         {
           "file": "src-tauri/src/contacts.rs",
           "anchor": "pub(crate) fn answer(",
-          "line": 296
+          "line": 289
         }
       ],
       "stalwart": [
@@ -6193,19 +6183,13 @@
       ],
       "tests": [
         {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "fn import_is_held_atomic_survives_restart_and_never_duplicates(",
-          "name": "import_is_held_atomic_survives_restart_and_never_duplicates",
-          "line": 908
-        },
-        {
-          "file": "src-tauri/src/google_contacts.rs",
-          "anchor": "fn contact_worker_requires_exact_ack_and_never_replays_uncertain_creates(",
-          "name": "contact_worker_requires_exact_ack_and_never_replays_uncertain_creates",
-          "line": 1112
+          "file": "src-tauri/src/contacts.rs",
+          "anchor": "fn local_search_shared_batches_references_and_revocation_never_allow_writes(",
+          "name": "local_search_shared_batches_references_and_revocation_never_allow_writes",
+          "line": 699
         }
       ],
-      "limitations": "Ausschließlich ausgewählte einseitige Google-Importe: Neuanlage und Änderungen zuvor importierter Kontakte (Name, E-Mail, Telefon), dauerhaft vorgemerkt und durch den eigenen Übertragungsbutton ausschließlich für die gewählte Kontaktauswahl freigegeben. Kein generischer ContactCard/set-UI-/Pluginpfad, keine Löschungen oder automatische Zusammenführung. Google OAuth/People und echte Stalwart-Kontaktschreibvorgänge noch nicht live validiert.",
+      "limitations": "Kontaktkarten sind lokal lesbar. Schreibzugriffe aus Oberfläche und Plugins werden abgelehnt.",
       "occurrences": [
         {
           "method": "ContactCard/set",
@@ -6539,7 +6523,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "\"Email/changes\" | \"Email/queryChanges\"",
-          "line": 872
+          "line": 889
         }
       ],
       "stalwart": [
@@ -6846,13 +6830,13 @@
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn bulwark_email_get_batch_projects_headers_and_mime_from_redb_offline(",
           "name": "bulwark_email_get_batch_projects_headers_and_mime_from_redb_offline",
-          "line": 882
+          "line": 899
         },
         {
           "file": "src-tauri/src/replica.rs",
           "anchor": "fn legacy_drafts_have_distinct_stable_threads_without_rewriting_missing_dates(",
           "name": "legacy_drafts_have_distinct_stable_threads_without_rewriting_missing_dates",
-          "line": 1131
+          "line": 1182
         }
       ],
       "limitations": "Standardprojektion, Headerformen ueber mail-parser, MIME-bodyProperties und BodyValues-Fetchoptionen implementiert. Worker erneuert alte Repliken und laedt abgeschnittene Textteile bis 8 MB je Teil nach. Groessere Teile bleiben als abgeschnitten markiert. Nur lokal synchronisierte Daten; optionale Metadaten-Erweiterungen und Roh-MIME-Neuparsing sind nicht enthalten. Kein neuer Live-Nachweis. Alte lokale Entwuerfe ohne threadId erhalten beim Lesen eine stabile Threadzuordnung ohne Aenderung des gespeicherten Altentwurfs.",
@@ -9008,7 +8992,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn answer_read(",
-          "line": 737
+          "line": 754
         }
       ],
       "stalwart": [
@@ -9023,7 +9007,7 @@
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn query_contract_matches_thread_filters_and_windows_after_restart(",
           "name": "query_contract_matches_thread_filters_and_windows_after_restart",
-          "line": 924
+          "line": 941
         }
       ],
       "limitations": "Mailbox/Keyword/Threadfilter und Fenster; Textsuche vereinfacht, Datumsvergleich lexikalisch, keine Index-/Sortierparitaet.",
@@ -10409,7 +10393,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "pub async fn queue_submission(",
-          "line": 115
+          "line": 133
         }
       ],
       "stalwart": [
@@ -10424,10 +10408,10 @@
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn writable_jmap_queues_flags_atomically_and_read_only_remains_enforced(",
           "name": "writable_jmap_queues_flags_atomically_and_read_only_remains_enforced",
-          "line": 1067
+          "line": 1084
         }
       ],
-      "limitations": "Seen/Flagged, Verschieben, Papierkorb und lokale Entwuerfe; strukturierter Versand separat journalisiert. Keine beliebigen Email/set-Patches; Live-Schreibnachweis auf freigegebene Flags begrenzt.",
+      "limitations": "Seen/Flagged, Verschieben, Papierkorb und lokale Entwuerfe. Manuell freigegebene lokale Entwuerfe koennen als neue Serverentwuerfe gespeichert werden; der Worker wartet auf bestaetigtes Ruecklesen. Strukturierter Versand separat journalisiert. Keine beliebigen Email/set-Patches; Live-Schreibnachweis auf freigegebene Flags begrenzt.",
       "occurrences": [
         {
           "method": "Email/set",
@@ -12522,7 +12506,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "pub async fn queue_submission(",
-          "line": 115
+          "line": 133
         }
       ],
       "stalwart": [
@@ -12537,7 +12521,7 @@
           "file": "src-tauri/src/journal.rs",
           "anchor": "fn offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay(",
           "name": "offline_send_survives_restart_requires_approval_and_uncertain_sends_never_replay",
-          "line": 948
+          "line": 1085
         }
       ],
       "limitations": "Nur strukturierter Versandpfad mit Email/set + Submission/set/get und dauerhaftem Journal. Generische Aufrufe abgelehnt; bestimmtes Cleanup lokal bestaetigt. Kein Live-Versandnachweis.",
@@ -13223,7 +13207,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "pub fn local_files(",
-          "line": 539
+          "line": 566
         }
       ],
       "stalwart": [
@@ -13548,7 +13532,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "pub fn local_files(",
-          "line": 539
+          "line": 566
         }
       ],
       "stalwart": [
@@ -13772,7 +13756,7 @@
         {
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn local_object_set_inner(",
-          "line": 342
+          "line": 369
         }
       ],
       "stalwart": [
@@ -13787,7 +13771,7 @@
           "file": "src-tauri/src/writes.rs",
           "anchor": "fn file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes(",
           "name": "file_upload_create_is_durable_held_and_rejects_missing_or_foreign_bytes",
-          "line": 1034
+          "line": 1153
         }
       ],
       "limitations": "Metadaten aus redb, vereinfachte Query. Set ueber Journal mit lokalen Uploadabhaengigkeiten; Inhaltsersetzung und volle Batch/Referenzparitaet fehlen. Keine Live-FileNode-Aenderungen.",
@@ -14981,7 +14965,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "\"Email/changes\" | \"Email/queryChanges\"",
-          "line": 872
+          "line": 889
         }
       ],
       "stalwart": [
@@ -15053,7 +15037,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn answer_read(",
-          "line": 737
+          "line": 754
         }
       ],
       "stalwart": [
@@ -15068,7 +15052,7 @@
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn shared_batches_route_by_account_and_revoked_accounts_cannot_read_cached_data(",
           "name": "shared_batches_route_by_account_and_revoked_accounts_cannot_read_cached_data",
-          "line": 1180
+          "line": 1197
         }
       ],
       "limitations": "Lokale Ordner und Eigenschaftsauswahl; keine vollstaendige Get-Argumentvalidierung.",
@@ -16472,7 +16456,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn answer_read(",
-          "line": 737
+          "line": 754
         }
       ],
       "stalwart": [
@@ -19123,7 +19107,7 @@
         {
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn answer_read(",
-          "line": 737
+          "line": 754
         }
       ],
       "stalwart": [
@@ -19138,7 +19122,7 @@
           "file": "src-tauri/src/desktop.rs",
           "anchor": "fn local_jmap_filters_threads_and_rejects_unimplemented_writes(",
           "name": "local_jmap_filters_threads_and_rejects_unimplemented_writes",
-          "line": 1354
+          "line": 1371
         }
       ],
       "limitations": "Threadmitglieder aus lokal sichtbarem Kontobestand; Reihenfolge nicht vollstaendig an Stalwart angeglichen.",
@@ -23619,24 +23603,23 @@
     "src-tauri/src/calendar.rs": "52f9f913c303f1d08344f44a9def4640756e4f59fa4147aa02b6cd7725a0720c",
     "src-tauri/src/calendar_parse.rs": "777528faf545058ac74770b5a9f8f7fc830638548acc9ab7e16f55bb58f080a4",
     "src-tauri/src/calendar_roundtrip.rs": "439f00a3d1d8f2e3513cf38c01e6bd0b1175f2476d72e6dba4be92b908b47883",
-    "src-tauri/src/contacts.rs": "68fa66698e343618da0c1d31f84bfb80ea555da9d6b9affa65008a3c36554620",
-    "src-tauri/src/desktop.rs": "5f77205ec1a7e772d93bfedacbba49f1be9f4aa740c0b9d3c5a1e30cbf7c4df1",
+    "src-tauri/src/contacts.rs": "3b237bc607ca2c2cf77c23a73a002bf0f01d6ce789345dda9c6579de5dd26b97",
+    "src-tauri/src/desktop.rs": "e631683d76b7cfb058fa65ec63f93d18687d2d921b40665a11d5469e3809a036",
     "src-tauri/src/email_get.rs": "ee37043e10aa15c2ea9e385f57cdb3ec7d87c0d74ee09b63b6d09181400a183f",
-    "src-tauri/src/google_contacts.rs": "dedf46f8be8c9e11ca6774ed16c9dab06151c6f68f9aa01b3d3b514bb5b7e09d",
-    "src-tauri/src/journal.rs": "3ee30126dbff2f4491d460913e676829a0bc9db8a9a3c26ea597751c31cea078",
-    "src-tauri/src/lib.rs": "7998070d502364af099335c0a5f97835166855d0e22fc8a80909934b1497851f",
+    "src-tauri/src/journal.rs": "dd7d16fffa8203acf51a1feac97c30aa936ba498ee57c347861eb1bb27a15ef5",
+    "src-tauri/src/lib.rs": "981c72661360ea22aab1ada4b11339f7ed7e1fbe3a910062a19669dacb2b4669",
     "src-tauri/src/push.rs": "bbb9110bd855a3a87fec10bf176a120274d700dcf52342c8786ae80a60158716",
-    "src-tauri/src/replica.rs": "8bdef601b892c4563088d228224aea203f99f811e2889494e28faf2b25579b39",
+    "src-tauri/src/replica.rs": "08402c971b8be9dbf8930ee0649046cb06966345e6857602d8c4dcb4196a27e7",
     "src-tauri/src/sync.rs": "55f516fdd291c88d4d64d94afa4eeef7e6a5c5295fdc06cb7b4e4244df82f52c",
     "src-tauri/src/uploads.rs": "4b6a4284134693f7aaf7a1739d120204b0ef3d2da2da2b805bf68d9811f8fcb1",
-    "src-tauri/src/writes.rs": "ddfaa589a0ef120d4bf0465ea6226ef066a1ea4b14dd6db2038f67e54b20f0c6",
+    "src-tauri/src/writes.rs": "45f72108a71e483041dab58ec22bf7d230dcb3f7ecfe2c95c7082148a38a035c",
     "src/desktop/InvitationUpdate.tsx": "ce0697ed353e261b4cdf8659fcae284c5940798bdbf6e05b7cec623497bc2ca6",
     "src/desktop/blobs.ts": "a165e9a751b3ce5e3c99a6b80f0440bafd0c4e83af3a4ef740b126f40720f05c",
     "src/desktop/bootstrap.ts": "e93d2dc18fa1e03157d716dbb267a0c9503f951dbeaa26323f8312f9548304c6",
     "src/desktop/calendar.ts": "3317775d582c95d3ec2ef2066cee9ecb4e1c21e01da63d2f6687a42605ff0352",
     "src/desktop/files.ts": "8369b6170ff54c1c737e02fcb01b1db20778e506135a80325360f1cac280c925",
     "src/desktop/invitation-updates.ts": "a7ec261b986b9f4623f894f0ce8a0a66f698135cf4a32a7854316a38dca9d58f",
-    "tests/desktop/bulwark.spec.ts": "aa84e1ae18cb9eda0fcb227d80241b3a62c11e76ee1edc019533058ef653af75",
-    "vite.config.ts": "99908acc816d883e943d81180f4cba2e090aef40ee031539eb2b158288c6cd09"
+    "tests/desktop/bulwark.spec.ts": "9228b51582f8ac524811932a54d3fe7d16d3c4cc9bfdefa1eb9865099b98e930",
+    "vite.config.ts": "9f147f341af6518c01946ee5dbeeae571d8c56cd2c3e255ae18d258a5139d8bf"
   }
 }

@@ -295,6 +295,19 @@ fn answer_email_set(
     {
         return Err("stateMismatch");
     }
+    let previous_draft = if let Some(value) = args.get("desktopPreviousDraftId") {
+        if args.get("update").is_some()
+            || args.get("destroy").is_some()
+            || args["create"]
+                .as_object()
+                .is_none_or(|items| items.len() != 1)
+        {
+            return Err("invalidArguments");
+        }
+        Some(value.as_str().ok_or("invalidArguments")?)
+    } else {
+        None
+    };
     let scope = sync::scope(config, account);
     if let Some(updates) = args.get("update") {
         if args.get("create").is_some() || args.get("destroy").is_some() || config.read_only {
@@ -345,7 +358,11 @@ fn answer_email_set(
     if let Some(creates) = args.get("create") {
         let creates = creates.as_object().ok_or("invalidArguments")?;
         for (creation_id, email) in creates {
-            match store.save_local_draft(&scope, email.clone()) {
+            let saved = match previous_draft {
+                Some(id) => store.save_draft_version(&scope, email.clone(), Some(id)),
+                None => store.save_local_draft(&scope, email.clone()),
+            };
+            match saved {
                 Ok(local_id) => {
                     crate::logging::event("info", "composer", "draft_saved_locally", json!({}));
                     created.insert(creation_id.clone(), json!({"id":local_id}));
@@ -1437,6 +1454,49 @@ mod tests {
         let mail = store.local_mail(&sync::scope(&config, "primary")).unwrap();
         assert_eq!(mail.emails[0]["id"], id);
         assert_eq!(mail.emails[0]["subject"], "Offline draft");
+        let mut replacement = json!({
+            "accountId":"primary",
+            "desktopPreviousDraftId":id,
+            "create":{"draft-2":{
+                "subject":"Revised offline draft",
+                "keywords":{"$draft":true},
+                "mailboxIds":{"drafts":true},
+                "attachments":[{"blobId":"unknown"}]
+            }}
+        });
+        let failed = answer_email_set(
+            &store,
+            &config,
+            "primary",
+            &mail,
+            "local:state",
+            &replacement,
+        )
+        .unwrap();
+        assert!(failed["notCreated"]["draft-2"].is_object());
+        let scope = sync::scope(&config, "primary");
+        assert_eq!(
+            store.local_mail(&scope).unwrap().emails[0]["subject"],
+            "Offline draft"
+        );
+        replacement["create"]["draft-2"]
+            .as_object_mut()
+            .unwrap()
+            .remove("attachments");
+        let updated = answer_email_set(
+            &store,
+            &config,
+            "primary",
+            &mail,
+            "local:state",
+            &replacement,
+        )
+        .unwrap();
+        assert_eq!(updated["created"]["draft-2"]["id"], id);
+        let mail = store.local_mail(&scope).unwrap();
+        assert_eq!(mail.emails.len(), 1);
+        assert_eq!(mail.emails[0]["threadId"], id);
+        assert_eq!(mail.emails[0]["subject"], "Revised offline draft");
         let removed = answer_email_set(
             &store,
             &config,

@@ -135,6 +135,15 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
         objectId: 'email-1', kind: 'mail', title: 'Offline-Nachricht aus redb', action: 'Mail ändern',
         transferable: true, requiresReview: heldWrites.has(accountId) })), ...(showLocalDraft ? [{ accountId: 'account',
           objectId: 'local-draft-1', kind: 'draft', title: 'Lokaler Testentwurf', action: 'Lokaler Entwurf', transferable: false, requiresReview: false }] : []), ...[...journalWrites.values()].map((row) => ({ ...row, requiresReview: row.status === 'held' }))];
+      case 'queue_draft_sync': {
+        expect(args).toEqual({ accountId: 'account', draftId: 'local-draft-1' });
+        showLocalDraft = false;
+        const journalId = ++nextJournalId;
+        journalWrites.set(journalId, { journalId, accountId: 'account', objectId: args.draftId,
+          kind: 'draft', title: 'Lokaler Testentwurf', action: 'Als Entwurf auf Stalwart speichern',
+          status: 'held', transferable: true });
+        return null;
+      }
       case 'approve_pending_changes':
         for (const change of args.changes) heldWrites.delete(change.accountId);
         for (const change of args.changes) if (journalWrites.has(change.journalId)) journalWrites.get(change.journalId).status = 'ready';
@@ -363,8 +372,15 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     await expect(sendButton).toBeVisible();
     await expect(page.locator('input[value="Lokaler Testentwurf"]')).toBeVisible();
     await page.locator('[data-testid="composer-close"]:visible').first().click();
-    showLocalDraft = false;
-    await page.evaluate(() => window.dispatchEvent(new Event('desktop-changes-updated')));
+    await page.locator('.desktop-changes-toggle').click();
+    await drafts.getByRole('button', { name: 'Stalwart-Entwurf vormerken' }).click();
+    const stagedDraft = drafts.getByRole('checkbox', { name: /Als Entwurf auf Stalwart speichern/ });
+    await expect(stagedDraft).toBeEnabled();
+    expect(calls).not.toContain('transport:draft');
+    await stagedDraft.check();
+    await drafts.getByRole('button', { name: 'Auswahl übertragen (1)' }).click();
+    await expect.poll(() => calls.includes('transport:draft')).toBe(true);
+    await drafts.getByRole('button', { name: 'Später' }).click();
     await page.getByText('Offline-Nachricht aus redb', { exact: true }).first().click();
   }
   if (writable) {
@@ -425,7 +441,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
   await expect(page.getByText('Team Kontakt', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Lokales Adressbuch', { exact: true }).first()).toBeVisible();
   await expect(page.locator('.desktop-contacts-notice')).toContainText('Direkte Bearbeitung');
-  await expect(page.getByRole('button', { name: 'Google-Kontakte übernehmen', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Google-Kontakte übernehmen', exact: true })).toHaveCount(0);
   const contactSearchBox = page.getByRole('searchbox', { name: /Kontakte durchsuchen|Kontakte suchen/ }).first();
   await contactSearchBox.fill('ada');
   await expect(page.getByText('Ada Lokal', { exact: true }).first()).toBeVisible();
@@ -524,7 +540,7 @@ test(`original Bulwark mail and plugins use native adapters (${writable ? 'writa
     expect(journalWrites.size).toBe(3);
     await page.reload();
     await expect(page.locator('.desktop-changes-toggle')).toHaveText('3 ausstehende Aktionen');
-    expect(calls.filter((call) => call.startsWith('transport:'))).toHaveLength(0);
+    expect(calls.filter((call) => call.startsWith('transport:') && call !== 'transport:draft')).toHaveLength(0);
     serverAvailable = true;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const review = page.getByRole('dialog', { name: 'Lokale Änderungen übertragen?' });

@@ -20,7 +20,6 @@ import { ExternalRecipientConfirmHost } from '@/components/email/external-recipi
 import { usePathname } from './navigation';
 import { bootstrapBulwark, synchronizeBulwark } from './bootstrap';
 import { AccountSetup, AccountSetupDialog } from './AccountSetup';
-import { GoogleContacts } from './GoogleContacts';
 import { CacheSettings } from './CacheSettings';
 import { PendingChanges } from './PendingChanges';
 import type { Bootstrap } from './bootstrap';
@@ -35,7 +34,7 @@ function Routes() {
   switch (surface) {
     case 'settings': return <div className="desktop-settings"><CacheSettings /><div className="desktop-settings-content"><SettingsApp linkSegments={rest} /></div></div>;
     case 'calendar': return <CalendarApp linkSegments={rest} />;
-    case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice"><span>Kontakte · Direkte Bearbeitung und Kontaktfotos sind noch nicht unterstützt.</span><GoogleContacts /></div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
+    case 'contacts': return <div className="desktop-contacts"><div className="desktop-contacts-notice"><span>Kontakte · Direkte Bearbeitung und Kontaktfotos sind noch nicht unterstützt.</span></div><div className="desktop-contacts-content"><ContactsApp linkSegments={rest} /></div></div>;
     case 'files': return <FilesApp linkSegments={rest} />;
     default: return <MailApp />;
   }

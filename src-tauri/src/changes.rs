@@ -36,7 +36,7 @@ fn capability(kind: &str) -> Result<&'static str, String> {
         "calendar" => Ok(sync::CALENDARS),
         "contact" => Ok(sync::CONTACTS),
         "file" => Ok(sync::FILES),
-        "send" | "mail" => Ok("urn:ietf:params:jmap:mail"),
+        "draft" | "send" | "mail" => Ok("urn:ietf:params:jmap:mail"),
         _ => Err("Unbekannte Änderungsart.".into()),
     }
 }
@@ -141,7 +141,7 @@ fn entry_details(
         capability(&entry.kind)?,
     )?;
     let scope = sync::scope(config, &selection.account_id);
-    let (state, objects) = if entry.kind == "send" {
+    let (state, objects) = if ["draft", "send"].contains(&entry.kind.as_str()) {
         (None, BTreeMap::new())
     } else {
         baseline(store, &scope, &entry.kind)?

@@ -74,7 +74,6 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
   }, [refresh, connectivity]);
   useEffect(() => {
     if (connectivity === 'offline') prompted.current = false;
-    if (document.querySelector('.desktop-google-import[open]')) return;
     if (connectivity === 'online' && !prompted.current && rows.some((row) => row.requiresReview && row.kind !== 'contact')) {
       prompted.current = true;
       setSelected(new Set());
@@ -131,6 +130,15 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
       await refresh();
       window.dispatchEvent(new Event('desktop-write-queued'));
     } catch { setError('Freigabe konnte nicht gespeichert werden.'); }
+    finally { setBusy(false); }
+  };
+  const queueDraft = async (row: Change) => {
+    setBusy(true); setError('');
+    try {
+      await invoke('queue_draft_sync', { accountId: row.accountId, draftId: row.objectId });
+      await refresh();
+      window.dispatchEvent(new Event('desktop-changes-updated'));
+    } catch (reason) { setError(typeof reason === 'string' ? reason : 'Entwurf konnte nicht vorgemerkt werden.'); }
     finally { setBusy(false); }
   };
   const inspect = async (row: Change) => {
@@ -193,10 +201,11 @@ export function PendingChanges({ connectivity, readOnly }: { connectivity: strin
           <div className="desktop-change-buttons">
             <button type="button" disabled={busy || row.status === 'sending'} onClick={() => { void openObject(row); }}>{row.kind === 'send' && ['held', 'ready', 'blocked'].includes(row.status ?? 'held') ? 'Als Entwurf bearbeiten' : row.kind === 'send' && row.status === 'applied' ? 'Lokal öffnen' : 'Öffnen'}</button>
             {row.transferable && !['sending', 'applied'].includes(row.status ?? '') && <button type="button" disabled={busy} onClick={() => { void inspect(row); }}>Prüfen</button>}
+            {row.kind === 'draft' && row.journalId == null && !readOnly && <button type="button" disabled={busy} onClick={() => { void queueDraft(row); }}>Stalwart-Entwurf vormerken</button>}
           </div>
         </div>)}
       </div>
-      <p>Zum Versand vorgemerkte Mails und gespeicherte Änderungen werden erst nach deiner Freigabe übertragen. Reine Entwürfe bleiben Entwürfe.</p>
+      <p>Zum Versand vorgemerkte Mails und gespeicherte Änderungen werden erst nach deiner Freigabe übertragen. Vorgemerkte Entwürfe werden im Entwurfsordner gespeichert.</p>
       <div className="desktop-changes-actions"><button type="button" onClick={() => setOpen(false)}>Später</button>
         <button type="button" disabled={busy || readOnly || connectivity !== 'online' || selected.size === 0} onClick={() => { void approve(); }}>Auswahl übertragen ({selected.size})</button></div></>}
     </dialog>, document.body)}

@@ -15,19 +15,21 @@ Implementierungsstand. Frühere Ausbaustufen stehen am Ende als Entwicklungshist
   Online kann der native Versandpfad unmittelbar die echte Serverantwort liefern;
   offline oder zur Prüfung gehaltene Aufträge liefern ein ausdrückliches
   queued-Ergebnis und warten auf Freigabe. Unklare Sendungen werden nicht
-  automatisch wiederholt. Entwürfe werden noch nicht mit dem Server synchronisiert.
+  automatisch wiederholt. Lokale Entwürfe lassen sich im Dialog für ausstehende
+  Änderungen für den Stalwart-Entwurfsordner vormerken und nach dem Wiederverbinden
+  freigeben. Die lokale Fassung bleibt bis zum bestätigten Rücklesen erhalten.
+  Zum Weiterbearbeiten kann ein noch ungesendeter Auftrag verworfen werden.
+  Eine unklare Antwort wird zur Prüfung gehalten. Beim Bearbeiten eines
+  vorhandenen Stalwart-Entwurfs bleibt das Original erhalten. Die bearbeitete
+  Fassung lässt sich als neuer Serverentwurf übertragen.
 - Kalenderereignisse und Dateimetadaten nutzen lokale Überlagerungen und das
   Schreibjournal. Neue Datei-Uploads und Composer-Anhänge werden ebenfalls
   lokal gehalten und als Abhängigkeiten freigegebener Aufträge hochgeladen.
   Datei-Inhaltsersetzungen, allgemeine Kontaktbearbeitung/-fotos und Kalenderverwaltung fehlen noch.
 - Kontakte und Adressbücher werden lesend über eine kontogetrennte native redb-Replik
   bereitgestellt. Suche, Details und freigegebene Adressbücher funktionieren offline.
-  Ein neuer, ausdrücklich ausgewählter Google-Import ergänzt Name, E-Mail und Telefon
-  über gehaltene ContactCard/set-Aufträge. Google wird nur im nativen Rust-Adapter
-  lesend angesprochen; OAuth-Tokens bleiben im OS-Schlüsselbund/Rust. Vorschau,
-  Dublettensperre und Konfliktvergleich lesen redb. Kein automatischer Import oder
-  Löschen; allgemeine Kontakt-UI-/Plugin-Writes bleiben gesperrt. Einrichtung und
-  noch fehlender Live-Nachweis: [Google-Import](google-contacts-import.md).
+  Nicht übertragene Altaufträge aus dem ausgelagerten Kontaktimport bleiben lokal
+  gesperrt und können im Änderungsdialog verworfen werden.
 - Blob-Downloads werden kontogetrennt in redb gespeichert und funktionieren danach
   offline. Das Downloadlimit ist pro Konto einstellbar; FIFO-Bereinigung entfernt alte
   Downloads. Die Bereinigung lokaler Uploads bleibt offen.
@@ -87,8 +89,7 @@ steht unverändert auf 03e7cd86f102bc66a589b7b02d49523b00ae633a.
    Datei-Inhaltsersetzungen und Verwaltung verwaister Uploads ergänzen.
 3. Den Konfliktvergleich um freie Bearbeitung einzelner Felder und eine
    durchsuchbare Übersicht abgeschlossener Aufträge erweitern.
-4. Google-Kontaktimport mit eigenem OAuth-Client separat live validieren. Danach
-   allgemeine Kontaktbearbeitung, weitere lokale JMAP-Methoden und Kontaktfotos ergänzen.
+4. Allgemeine Kontaktbearbeitung, weitere lokale JMAP-Methoden und Kontaktfotos ergänzen.
 5. Große Postfächer mit paginierter Staging-Ablage und lokalen Seitenabfragen
    unterstützen; Verwaltung lokaler Uploads ergänzen. Downloadlimits und
    kontogetrennte FIFO-Bereinigung sind bereits implementiert.

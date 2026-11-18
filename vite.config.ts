@@ -43,7 +43,17 @@ ${needle}`);
       if (id.replaceAll('\\', '/').endsWith('/lib/jmap/client.ts')) {
         const needle = '    let response = await this.submissionRequest(methodCalls);';
         if (code.split(needle).length !== 2) throw new Error('Bulwark send integration changed upstream');
-        return code.replace(needle, `    const desktopResult = await (globalThis as unknown as { __DESKTOP_QUEUE_SUBMISSION__: (calls: JMAPMethodCall[], draftId?: string, draftAccountId?: string) => Promise<unknown> }).__DESKTOP_QUEUE_SUBMISSION__(methodCalls, draftId, options?.draftAccountId);\n    if ((desktopResult as SendEmailResult).queued) return desktopResult as SendEmailResult;\n    let response = desktopResult as JMAPResponse;`);
+        const draftCreate = '        accountId: draftAccountId,\n        create: { [emailId]: emailData },';
+        const draftReplacement = '        const newDraftId = result.created[emailId].id;\n\n        if (draftId) {';
+        const normalized = code.replaceAll('\r\n', '\n');
+        if (normalized.split(draftCreate).length !== 2 || normalized.split(draftReplacement).length !== 2) throw new Error('Bulwark draft replacement changed upstream');
+        // Saving a local copy cannot replace a Stalwart draft on other devices.
+        return normalized
+          .replace(draftCreate, `${draftCreate}
+        ...((options?.previousDraftAccountId || this.accountId) === draftAccountId && draftId?.startsWith("local-draft-")
+          ? { desktopPreviousDraftId: draftId } : {}),`)
+          .replace(draftReplacement, draftReplacement.replace('if (draftId)', 'if (draftId?.startsWith("local-draft-") && ((options?.previousDraftAccountId || this.accountId) !== draftAccountId || draftId !== newDraftId))'))
+          .replace(needle, `    const desktopResult = await (globalThis as unknown as { __DESKTOP_QUEUE_SUBMISSION__: (calls: JMAPMethodCall[], draftId?: string, draftAccountId?: string) => Promise<unknown> }).__DESKTOP_QUEUE_SUBMISSION__(methodCalls, draftId, options?.draftAccountId);\n    if ((desktopResult as SendEmailResult).queued) return desktopResult as SendEmailResult;\n    let response = desktopResult as JMAPResponse;`);
       }
       if (id.replaceAll('\\', '/').endsWith('/components/mail/mail-app.tsx')) {
         const needle = '  const handleEditDraft = async (email?: Email, source?: DraftSource) => {';
